@@ -39,7 +39,7 @@ if os.path.exists(frontend_dir):
 # ---------- Pydantic Models ----------
 
 class OrderInput(BaseModel):
-    order_id: str
+    order_id: str | None = None
     customer_name: str
     phone: str
     address: str
@@ -47,11 +47,11 @@ class OrderInput(BaseModel):
     state: str
     pincode: str
     order_value: float
-    items: str = ""
+    items: str = "Oytra Haircare Set"
     num_items: int = 1
-    customer_prior_orders: int = 0
-    customer_prior_rto: int = 0
-    utm_source: str = ""
+    customer_prior_orders: int | None = None
+    customer_prior_rto: int | None = None
+    utm_source: str = "new_order_ui"
     payment_method: str = "COD"
 
 
@@ -88,6 +88,35 @@ def _get_pincode_stats(pincode: str) -> dict | None:
     if row:
         return {"total_orders": row[0], "total_rto": row[1], "rto_rate": float(row[2]), "risk_reliable": row[3]}
     return None
+
+
+def _lookup_customer_history(phone: str) -> tuple[int, int]:
+    """
+    Look up customer order and return history by phone number in the orders database.
+    Returns (past_delivered_orders, past_rtos).
+    """
+    clean = phone.strip().replace(" ", "").replace("+91", "").replace("-", "")
+    with db_engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT 
+                COALESCE(SUM(CASE WHEN final_status = 'DELIVERED' OR final_status = 'CONFIRMED' THEN 1 ELSE 0 END), 0) as delivered,
+                COALESCE(SUM(CASE WHEN final_status = 'RTO' OR final_status = 'CUSTOMER_CANCELLED' THEN 1 ELSE 0 END), 0) as rto,
+                COALESCE(MAX(customer_prior_orders), 0) as max_prior_orders,
+                COALESCE(MAX(customer_prior_rto), 0) as max_prior_rto
+            FROM orders
+            WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '+91', ''), '-', '') = :p
+               OR phone LIKE :like_p
+        """), {
+            "p": clean,
+            "like_p": f"%{clean[-10:]}%" if len(clean) >= 10 else f"%{clean}%"
+        }).fetchone()
+
+        if row and (row[0] > 0 or row[1] > 0 or row[2] > 0 or row[3] > 0):
+            orders_cnt = max(int(row[0]), int(row[2]))
+            rto_cnt = max(int(row[1]), int(row[3]))
+            return orders_cnt, rto_cnt
+
+    return 0, 0
 
 
 # ---------- Endpoints ----------
@@ -322,10 +351,21 @@ def evaluate_order(order: OrderInput):
     and persist the order and decision to the database.
     """
     import json
+    import random
     rules = _load_rules()
     pincode_stats = _get_pincode_stats(order.pincode)
 
     order_dict = order.model_dump()
+
+    # Auto-generate Order ID if not provided
+    if not order_dict.get("order_id"):
+        order_dict["order_id"] = f"KT{random.randint(102500, 109999)}"
+
+    # Automatically look up customer purchase and RTO history by phone number from database
+    if order_dict.get("customer_prior_orders") is None or order_dict.get("customer_prior_rto") is None:
+        db_prior_orders, db_prior_rto = _lookup_customer_history(order.phone)
+        order_dict["customer_prior_orders"] = db_prior_orders
+        order_dict["customer_prior_rto"] = db_prior_rto
 
     # LLM analysis for address/name quality
     llm_result = analyze_order_with_llm(order_dict)
@@ -396,7 +436,7 @@ def evaluate_order(order: OrderInput):
                     actual_status = EXCLUDED.actual_status,
                     decided_at = NOW()
             """), {
-                "order_id": order.order_id,
+                "order_id": order_dict["order_id"],
                 "decision": decision["decision"],
                 "risk_score": decision["risk_score"],
                 "risk_category": decision["risk_category"],
@@ -426,7 +466,7 @@ def evaluate_order(order: OrderInput):
                     actual_status = EXCLUDED.actual_status,
                     decided_at = CURRENT_TIMESTAMP
             """), {
-                "order_id": order.order_id,
+                "order_id": order_dict["order_id"],
                 "decision": decision["decision"],
                 "risk_score": decision["risk_score"],
                 "risk_category": decision["risk_category"],
@@ -446,7 +486,7 @@ def evaluate_order(order: OrderInput):
         whatsapp = create_nudge_message(order_dict, discount)
 
     return {
-        "order_id": order.order_id,
+        "order_id": order_dict["order_id"],
         "status": initial_status,
         **decision,
         "whatsapp": whatsapp,

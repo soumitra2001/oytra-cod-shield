@@ -13,11 +13,20 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) {
     lucide.createIcons();
   }
+  regenerateOrderId();
   loadRulesFromDB();
   loadDashboardMetricsFromDB();
   loadOrdersFromDB();
   loadCreatedOrdersFromDB();
 });
+
+function regenerateOrderId() {
+  const randNum = Math.floor(102000 + Math.random() * 90000);
+  const inp = document.getElementById("inp-order-id");
+  if (inp) {
+    inp.value = `KT${randNum}`;
+  }
+}
 
 // Tab Switching
 function switchTab(tabName) {
@@ -36,6 +45,11 @@ function switchTab(tabName) {
     }
   });
 
+  if (tabName === "evaluator") {
+    if (!document.getElementById("inp-order-id").value) {
+      regenerateOrderId();
+    }
+  }
   if (tabName === "created") {
     loadCreatedOrdersFromDB();
   }
@@ -60,8 +74,6 @@ async function handleEvaluate(e) {
     city: document.getElementById("inp-city").value.trim(),
     state: document.getElementById("inp-state").value.trim(),
     pincode: document.getElementById("inp-pincode").value.trim(),
-    customer_prior_orders: parseInt(document.getElementById("inp-prior-orders").value) || 0,
-    customer_prior_rto: parseInt(document.getElementById("inp-prior-rto").value) || 0,
     payment_method: "COD",
   };
 
@@ -83,8 +95,9 @@ async function handleEvaluate(e) {
 
     const data = await res.json();
 
-    // Reset form inputs
+    // Reset form inputs & prepare next auto Order ID
     document.getElementById("order-form").reset();
+    regenerateOrderId();
 
     // Refresh created orders table
     await loadCreatedOrdersFromDB();
