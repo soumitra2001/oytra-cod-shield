@@ -9,7 +9,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.config import get_db, engine as db_engine, IS_POSTGRES
+from src.config import get_db, engine as db_engine, IS_POSTGRES, RTO_COST_PER_ORDER, GROSS_MARGIN_RATE
 from src.engine.decision_engine import make_decision
 from src.engine.llm_analyzer import analyze_order_with_llm
 from src.engine.backtest import run_backtest
@@ -409,6 +409,7 @@ def evaluate_order(order: OrderInput):
                 'Delhivery', 'COD', :final_status
             )
             ON CONFLICT (order_id) DO UPDATE SET
+                order_datetime = {now_sql},
                 customer_name = EXCLUDED.customer_name,
                 phone = EXCLUDED.phone,
                 address = EXCLUDED.address,
@@ -559,6 +560,171 @@ def process_whatsapp_reply(reply_data: WhatsAppReply):
     # In a real system, this would look up the conversation in DB
     result = handle_reply(reply_data.reply, "confirmation")
     return {"order_id": reply_data.order_id, **result}
+
+
+@app.get("/api/dashboard/metrics")
+def get_dashboard_metrics(
+    preset: str = "today",
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    """
+    Retrieve real-time founder executive metrics filtered strictly by order_datetime.
+    Supports preset options: 'today', 'last7', 'last30', 'all', 'custom'.
+    """
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+
+    effective_start = None
+    effective_end = None
+
+    if preset == "today":
+        effective_start = today_str
+        effective_end = today_str
+    elif preset == "last7":
+        effective_start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        effective_end = today_str
+    elif preset == "last30":
+        effective_start = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        effective_end = today_str
+    elif preset == "all":
+        effective_start = None
+        effective_end = None
+    elif preset == "custom":
+        effective_start = start_date
+        effective_end = end_date or today_str
+    else:
+        effective_start = today_str
+        effective_end = today_str
+
+    params = {}
+    where_clauses = []
+
+    if effective_start:
+        where_clauses.append("o.order_datetime >= :start_dt")
+        params["start_dt"] = f"{effective_start} 00:00:00"
+    if effective_end:
+        where_clauses.append("o.order_datetime <= :end_dt")
+        params["end_dt"] = f"{effective_end} 23:59:59.999999"
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    query = f"""
+        SELECT
+            od.decision,
+            od.risk_score,
+            o.order_value,
+            o.final_status,
+            o.customer_prior_orders,
+            o.customer_prior_rto,
+            o.order_id,
+            o.customer_name,
+            o.order_datetime,
+            o.city,
+            o.state,
+            o.payment_method,
+            o.utm_source,
+            od.reason
+        FROM orders o
+        JOIN order_decisions od ON o.order_id = od.order_id
+        {where_sql}
+        ORDER BY o.order_datetime DESC
+    """
+
+    with db_engine.connect() as conn:
+        rows = conn.execute(text(query), params).fetchall()
+
+    total_orders = len(rows)
+    total_value = sum(float(r[2] or 0) for r in rows)
+
+    counts = {"ship": 0, "confirm": 0, "nudge_prepaid": 0, "cancel": 0}
+    values = {"ship": 0.0, "confirm": 0.0, "nudge_prepaid": 0.0, "cancel": 0.0}
+
+    avoided_rtos = 0
+    false_cancels = 0
+    false_cancel_margin_loss = 0.0
+    prepaid_conversions = 0
+
+    orders_list = []
+    for r in rows:
+        dec = r[0] or "ship"
+        score = float(r[1]) if r[1] is not None else 0.0
+        val = float(r[2] or 0)
+        status = r[3] or ""
+        oid = r[6]
+        cname = r[7]
+        odt = str(r[8])
+        city = r[9]
+        state = r[10]
+        pay_method = r[11]
+        utm = r[12]
+        reason = r[13]
+
+        if dec in counts:
+            counts[dec] += 1
+            values[dec] += val
+
+        # RTO Avoidance & False Cancels logic
+        if dec == "cancel":
+            if status == "DELIVERED":
+                false_cancels += 1
+                false_cancel_margin_loss += val * GROSS_MARGIN_RATE
+            else:
+                avoided_rtos += 1
+        elif dec == "nudge_prepaid" and (status == "CONVERTED_PREPAID" or pay_method == "PREPAID"):
+            prepaid_conversions += 1
+
+        if len(orders_list) < 100:
+            orders_list.append({
+                "order_id": oid,
+                "customer_name": cname,
+                "order_datetime": odt,
+                "city": city,
+                "state": state,
+                "order_value": val,
+                "risk_score": score,
+                "decision": dec,
+                "status": status,
+                "reason": reason,
+            })
+
+    # Financial Impact Calculations
+    saved_from_avoided_rto = avoided_rtos * RTO_COST_PER_ORDER
+    prepaid_conversion_savings = prepaid_conversions * 40.65
+    net_impact = saved_from_avoided_rto + prepaid_conversion_savings - false_cancel_margin_loss
+
+    pcts = {
+        k: round(100.0 * counts[k] / max(total_orders, 1), 1)
+        for k in counts
+    }
+
+    return {
+        "filter": {
+            "preset": preset,
+            "start_date": effective_start,
+            "end_date": effective_end,
+            "date_display": (f"{effective_start} to {effective_end}" if effective_start != effective_end else effective_start) if effective_start else "All Time (1,988+ Historical)",
+        },
+        "total_orders": total_orders,
+        "total_order_value": round(total_value, 2),
+        "decisions_count": counts,
+        "decisions_pct": pcts,
+        "decisions_value": {k: round(v, 2) for k, v in values.items()},
+        "financials": {
+            "avoided_rto_savings": round(saved_from_avoided_rto, 2),
+            "false_cancel_margin_loss": round(false_cancel_margin_loss, 2),
+            "prepaid_conversion_savings": round(prepaid_conversion_savings, 2),
+            "net_financial_impact": round(net_impact, 2),
+        },
+        "outcomes": {
+            "avoided_rtos": avoided_rtos,
+            "false_cancellations": false_cancels,
+            "prepaid_conversions": prepaid_conversions,
+        },
+        "orders": orders_list,
+    }
 
 
 @app.get("/api/backtest")

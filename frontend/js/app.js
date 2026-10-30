@@ -15,8 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   regenerateOrderId();
   loadRulesFromDB();
-  loadDashboardMetricsFromDB();
-  loadOrdersFromDB();
+  loadDashboardMetrics();
   loadCreatedOrdersFromDB();
 });
 
@@ -30,7 +29,7 @@ function regenerateOrderId() {
 
 // Tab Switching
 function switchTab(tabName) {
-  const tabs = ["evaluator", "created", "dashboard", "rules", "orders"];
+  const tabs = ["evaluator", "created", "dashboard", "rules"];
   tabs.forEach((t) => {
     const navBtn = document.getElementById(`tab-${t}`);
     const view = document.getElementById(`view-${t}`);
@@ -54,7 +53,7 @@ function switchTab(tabName) {
     loadCreatedOrdersFromDB();
   }
   if (tabName === "dashboard") {
-    loadDashboardMetricsFromDB();
+    loadDashboardMetrics();
   }
   if (window.lucide) {
     lucide.createIcons();
@@ -668,51 +667,178 @@ function appendModalUserMessage(html) {
 }
 
 // ----------------- FOUNDER DASHBOARD METRICS -----------------
-async function loadDashboardMetrics() {
-  await loadDashboardMetricsFromDB();
+let currentDashboardPreset = "today";
+let currentDashboardStartDate = null;
+let currentDashboardEndDate = null;
+
+function setDashboardPreset(preset) {
+  currentDashboardPreset = preset;
+  currentDashboardStartDate = null;
+  currentDashboardEndDate = null;
+
+  // Update button active states
+  const presets = ["today", "last7", "last30", "all", "custom"];
+  presets.forEach((p) => {
+    const btn = document.getElementById(`btn-filter-${p}`);
+    if (btn) {
+      if (p === preset) {
+        btn.className = "dash-filter-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-600 text-white shadow-sm";
+      } else {
+        btn.className = "dash-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition";
+      }
+    }
+  });
+
+  const customInputs = document.getElementById("dash-custom-inputs");
+  if (customInputs && preset !== "custom") {
+    customInputs.classList.add("hidden");
+  }
+
+  loadDashboardMetrics();
 }
 
-async function loadDashboardMetricsFromDB() {
+function toggleCustomDateInputs() {
+  const customInputs = document.getElementById("dash-custom-inputs");
+  if (customInputs) {
+    customInputs.classList.toggle("hidden");
+    if (!customInputs.classList.contains("hidden")) {
+      currentDashboardPreset = "custom";
+      const presets = ["today", "last7", "last30", "all"];
+      presets.forEach((p) => {
+        const btn = document.getElementById(`btn-filter-${p}`);
+        if (btn) {
+          btn.className = "dash-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition";
+        }
+      });
+      const customBtn = document.getElementById("btn-filter-custom");
+      if (customBtn) {
+        customBtn.className = "dash-filter-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-600 text-white shadow-sm flex items-center gap-1";
+      }
+    }
+  }
+}
+
+function applyCustomDateFilter() {
+  const start = document.getElementById("dash-start-date").value;
+  const end = document.getElementById("dash-end-date").value;
+  if (!start) {
+    alert("Please select a start date.");
+    return;
+  }
+  currentDashboardPreset = "custom";
+  currentDashboardStartDate = start;
+  currentDashboardEndDate = end || start;
+  loadDashboardMetrics();
+}
+
+async function loadDashboardMetrics() {
   const errorBanner = document.getElementById("dash-error");
+  const tbody = document.getElementById("dash-orders-tbody");
+  const countBadge = document.getElementById("dash-orders-count-badge");
+  const filterLabel = document.getElementById("dash-active-filter-label");
+
+  let url = `/api/dashboard/metrics?preset=${currentDashboardPreset}`;
+  if (currentDashboardStartDate) url += `&start_date=${currentDashboardStartDate}`;
+  if (currentDashboardEndDate) url += `&end_date=${currentDashboardEndDate}`;
+
   try {
-    const res = await fetch("/api/backtest");
-    if (!res.ok) throw new Error("Could not fetch metrics from backtest engine");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Could not fetch metrics from dashboard engine");
     const data = await res.json();
 
-    errorBanner.classList.add("hidden");
+    if (errorBanner) errorBanner.classList.add("hidden");
+
+    if (filterLabel) {
+      filterLabel.innerText = `${data.filter.date_display} (${data.total_orders} Orders • GMV: ₹${data.total_order_value.toLocaleString()})`;
+    }
 
     // 4 Decision Buckets
     const counts = data.decisions_count || {};
-    const total = data.total_evaluated || 1;
+    const pcts = data.decisions_pct || {};
 
     document.getElementById("dash-count-ship").innerText = counts.ship || 0;
-    document.getElementById("dash-pct-ship").innerText = `${((counts.ship || 0) / total * 100).toFixed(1)}% of total orders`;
+    document.getElementById("dash-pct-ship").innerText = `${pcts.ship || 0}% of orders`;
 
     document.getElementById("dash-count-confirm").innerText = counts.confirm || 0;
-    document.getElementById("dash-pct-confirm").innerText = `${((counts.confirm || 0) / total * 100).toFixed(1)}% of total orders`;
+    document.getElementById("dash-pct-confirm").innerText = `${pcts.confirm || 0}% of orders`;
 
     document.getElementById("dash-count-nudge").innerText = counts.nudge_prepaid || 0;
-    document.getElementById("dash-pct-nudge").innerText = `${((counts.nudge_prepaid || 0) / total * 100).toFixed(1)}% of total orders`;
+    document.getElementById("dash-pct-nudge").innerText = `${pcts.nudge_prepaid || 0}% of orders`;
 
     document.getElementById("dash-count-cancel").innerText = counts.cancel || 0;
-    document.getElementById("dash-pct-cancel").innerText = `${((counts.cancel || 0) / total * 100).toFixed(1)}% of total orders`;
+    document.getElementById("dash-pct-cancel").innerText = `${pcts.cancel || 0}% of orders`;
 
     // Financial Impacts
     const fin = data.financials || {};
+    const outcomes = data.outcomes || {};
+
     document.getElementById("dash-saved").innerText = `+₹${Math.round(fin.avoided_rto_savings || 0).toLocaleString()}`;
-    document.getElementById("dash-saved-sub").innerText = `${data.outcomes?.avoided_rtos || 0} serial returns stopped`;
+    document.getElementById("dash-saved-sub").innerText = `${outcomes.avoided_rtos || 0} serial returns halted`;
 
     document.getElementById("dash-lost").innerText = `-₹${Math.round(fin.false_cancel_margin_loss || 0).toLocaleString()}`;
-    document.getElementById("dash-lost-sub").innerText = `${data.outcomes?.false_cancellations || 0} genuine buyers cancelled`;
+    document.getElementById("dash-lost-sub").innerText = `${outcomes.false_cancellations || 0} genuine buyers cancelled`;
 
     document.getElementById("dash-nudge-gain").innerText = `+₹${Math.round(fin.prepaid_conversion_savings || 0).toLocaleString()}`;
-    document.getElementById("dash-nudge-sub").innerText = `${data.outcomes?.prepaid_conversions || 0} orders converted to prepaid`;
+    document.getElementById("dash-nudge-sub").innerText = `${outcomes.prepaid_conversions || 0} orders converted to prepaid`;
 
     const net = Math.round(fin.net_financial_impact || 0);
-    document.getElementById("dash-net-impact").innerText = `${net >= 0 ? "+" : ""}₹${net.toLocaleString()}`;
+    const netEl = document.getElementById("dash-net-impact");
+    if (netEl) {
+      netEl.innerText = `${net >= 0 ? "+" : ""}₹${net.toLocaleString()}`;
+    }
+
+    // Orders Table for this period
+    if (countBadge) {
+      countBadge.innerText = `${data.total_orders} Orders`;
+    }
+
+    if (tbody) {
+      tbody.innerHTML = "";
+      const orders = data.orders || [];
+      if (orders.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="p-8 text-center text-slate-400">
+              <p class="font-bold text-slate-700">No Orders in Selected Period (${data.filter.date_display})</p>
+              <p class="text-xs text-slate-400 mt-1">Submit an incoming order via <a href="javascript:switchTab('evaluator')" class="text-emerald-600 font-semibold underline">Create Order</a>, or select <a href="javascript:setDashboardPreset('all')" class="text-emerald-600 font-semibold underline">All Time</a> above to review historical orders.</p>
+            </td>
+          </tr>
+        `;
+      } else {
+        orders.forEach((o) => {
+          let badgeClass = "bg-slate-100 text-slate-700";
+          if (o.decision === "ship") badgeClass = "bg-emerald-100 text-emerald-800";
+          if (o.decision === "confirm") badgeClass = "bg-amber-100 text-amber-800";
+          if (o.decision === "nudge_prepaid") badgeClass = "bg-orange-100 text-orange-800";
+          if (o.decision === "cancel") badgeClass = "bg-rose-100 text-rose-800";
+
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openOrderModal('${o.order_id}')">
+              <td class="py-2.5 px-4 font-mono font-bold text-emerald-700 hover:underline">#${o.order_id}</td>
+              <td class="py-2.5 px-4 font-medium text-slate-900">${o.customer_name || "N/A"}</td>
+              <td class="py-2.5 px-4 text-slate-500 font-mono text-[11px]">${o.order_datetime ? o.order_datetime.replace("T", " ").slice(0, 19) : "N/A"}</td>
+              <td class="py-2.5 px-4 font-bold text-slate-800">₹${o.order_value || 0}</td>
+              <td class="py-2.5 px-4 font-extrabold text-slate-900">${o.risk_score !== null ? o.risk_score + '/100' : '---'}</td>
+              <td class="py-2.5 px-4">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${badgeClass}">
+                  ${o.decision ? o.decision.replace('_', ' ') : 'PENDING'}
+                </span>
+              </td>
+              <td class="py-2.5 px-4">
+                <span class="font-bold text-[10px] px-2 py-0.5 rounded-md ${getStatusClass(o.status)}">
+                  ${o.status || "PENDING"}
+                </span>
+              </td>
+            </tr>
+          `;
+        });
+      }
+    }
   } catch (err) {
-    errorBanner.classList.remove("hidden");
-    errorBanner.innerText = `⚠️ Failed to load metrics: ${err.message}. Ensure database is seeded.`;
+    if (errorBanner) {
+      errorBanner.classList.remove("hidden");
+      errorBanner.innerText = `⚠️ Failed to load metrics: ${err.message}.`;
+    }
   }
 }
 
@@ -776,75 +902,4 @@ async function saveAllRules() {
   }
   alert("✅ All modified rules saved to database!");
   loadRulesFromDB();
-}
-
-// ----------------- HISTORICAL DATABASE EXPLORER -----------------
-async function loadOrdersFromDB() {
-  try {
-    const res = await fetch("/api/orders?limit=200");
-    if (!res.ok) throw new Error("Could not load orders");
-    allOrders = await res.json();
-    renderOrdersTable(allOrders);
-  } catch (err) {
-    const tbody = document.getElementById("orders-tbody");
-    if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-rose-500">Failed to load orders: ${err.message}</td></tr>`;
-    }
-  }
-}
-
-function renderOrdersTable(orders) {
-  const tbody = document.getElementById("orders-tbody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  if (orders.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">No matching orders found in database</td></tr>`;
-    return;
-  }
-
-  orders.slice(0, 100).forEach((o) => {
-    let badgeClass = "bg-slate-100 text-slate-700";
-    if (o.decision === "ship") badgeClass = "bg-emerald-100 text-emerald-800";
-    if (o.decision === "confirm") badgeClass = "bg-amber-100 text-amber-800";
-    if (o.decision === "nudge_prepaid") badgeClass = "bg-orange-100 text-orange-800";
-    if (o.decision === "cancel") badgeClass = "bg-rose-100 text-rose-800";
-
-    tbody.innerHTML += `
-      <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openOrderModal('${o.order_id}')">
-        <td class="py-2.5 px-4 font-mono font-bold text-emerald-700 hover:underline">#${o.order_id}</td>
-        <td class="py-2.5 px-4 font-medium">${o.customer_name || "N/A"}</td>
-        <td class="py-2.5 px-4 text-slate-500">${o.city || ""}, ${o.pincode || ""}</td>
-        <td class="py-2.5 px-4 font-semibold">₹${o.order_value || 0}</td>
-        <td class="py-2.5 px-4 font-bold">${o.risk_score !== null ? o.risk_score : "---"}</td>
-        <td class="py-2.5 px-4">
-          <span class="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${badgeClass}">
-            ${o.decision || "PENDING"}
-          </span>
-        </td>
-        <td class="py-2.5 px-4 text-slate-600 max-w-xs truncate text-[11px]">${o.reason || "Awaiting evaluation"}</td>
-        <td class="py-2.5 px-4 font-bold ${o.final_status === 'DELIVERED' || o.final_status === 'CONFIRMED' ? 'text-emerald-600' : 'text-rose-600'}">
-          ${o.final_status || "PENDING"}
-        </td>
-      </tr>
-    `;
-  });
-}
-
-function filterOrdersTable() {
-  const query = document.getElementById("order-search").value.toLowerCase().trim();
-  const decisionFilter = document.getElementById("order-filter-decision").value;
-
-  const filtered = allOrders.filter((o) => {
-    const matchQuery =
-      !query ||
-      (o.customer_name && o.customer_name.toLowerCase().includes(query)) ||
-      (o.order_id && o.order_id.toLowerCase().includes(query)) ||
-      (o.pincode && o.pincode.toString().includes(query));
-
-    const matchDecision = decisionFilter === "ALL" || o.decision === decisionFilter;
-    return matchQuery && matchDecision;
-  });
-
-  renderOrdersTable(filtered);
 }
