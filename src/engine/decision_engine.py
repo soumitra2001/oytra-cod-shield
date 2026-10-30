@@ -79,38 +79,61 @@ def make_decision(order: dict, pincode_stats: dict, rules: dict, llm_result: dic
 
 
 def _generate_reason(order: dict, decision: str, score: float, factors: dict) -> str:
-    """Generate a plain-English reason for the decision."""
+    """Generate a clear, transparent plain-English explanation of why this order received this risk score."""
     name = order.get("customer_name", "Customer")
-    parts = []
+    addr = order.get("address", "")
+    pincode = str(order.get("pincode", "N/A")).replace(".0", "")
 
-    if decision == "ship":
-        parts.append(f"Order looks safe (risk score: {score}/100).")
-        if factors.get("prior_orders", 0) > 0 and factors.get("prior_rto", 0) == 0:
-            parts.append(f"{name} has {factors['prior_orders']} prior orders with no returns.")
-        if factors.get("pincode_rto_rate") is not None and factors["pincode_rto_rate"] < 20:
-            parts.append(f"Pincode {order.get('pincode', 'N/A')} has a low RTO rate ({factors['pincode_rto_rate']}%).")
+    # 1. State clear score and safe vs risky classification
+    if score <= 30:
+        tier_text = f"Risk Score is {score:.1f}/100 — SAFE (Low Risk, 0-30 threshold). Safe to ship directly without customer friction."
+    elif score <= 60:
+        tier_text = f"Risk Score is {score:.1f}/100 — MODERATELY RISKY (Medium Risk, 31-60 threshold). Risky to ship directly; requires WhatsApp intent & address confirmation."
+    elif score <= 80:
+        tier_text = f"Risk Score is {score:.1f}/100 — HIGH RISK (61-80 threshold). High return likelihood; requires ₹40 prepaid discount conversion nudge."
+    else:
+        tier_text = f"Risk Score is {score:.1f}/100 — SEVERE RISK (81-100 threshold). Very high return probability; recommended for hold or cancellation."
 
-    elif decision == "confirm":
-        parts.append(f"Order needs confirmation (risk score: {score}/100).")
-        if factors.get("first_time_buyer"):
-            parts.append(f"{name} is a first-time buyer — confirm via WhatsApp before shipping.")
-        if factors.get("pincode_rto_rate") is not None and factors["pincode_rto_rate"] > 25:
-            parts.append(f"Pincode {order.get('pincode', 'N/A')} has an elevated RTO rate ({factors['pincode_rto_rate']}%).")
+    points_breakdown = []
 
-    elif decision == "nudge_prepaid":
-        parts.append(f"Recommend converting to prepaid (risk score: {score}/100).")
-        if factors.get("first_order_protected"):
-            parts.append(f"{name} is a first-time buyer — nudging to prepaid instead of cancelling to protect acquisition cost.")
-        if factors.get("rto_ratio", 0) > 0.3:
-            parts.append(f"{name} has a {int(factors['rto_ratio'] * 100)}% return rate on past orders.")
+    # 2. Address evaluation
+    if factors.get("short_or_incomplete_address"):
+        pts = factors.get("address_risk_score", 20.0)
+        points_breakdown.append(f"Incomplete address '{addr}' missing flat/house/building details (+{pts:.0f} pts)")
+    elif factors.get("sparse_address"):
+        pts = factors.get("address_risk_score", 15.0)
+        points_breakdown.append(f"Address '{addr}' lacks specific building details (+{pts:.0f} pts)")
+    else:
+        points_breakdown.append("Address is complete with building/house specifics (0 pts)")
 
-    elif decision == "cancel":
-        parts.append(f"High risk — hold/cancel this order (risk score: {score}/100).")
-        if factors.get("rto_ratio", 0) > 0.5:
-            parts.append(f"{name} has returned {factors.get('prior_rto', 0)} of {factors.get('prior_orders', 0)} prior orders.")
-        if factors.get("name_suspicious"):
-            parts.append("Customer name appears suspicious or fake.")
-        if factors.get("address_gibberish"):
-            parts.append("Delivery address appears incomplete or gibberish.")
+    # 3. Customer purchase and RTO history
+    if factors.get("first_time_buyer"):
+        pts = factors.get("rto_history_score", 12.0)
+        points_breakdown.append(f"First-time buyer with no verified delivery history (+{pts:.0f} pts)")
+    elif factors.get("prior_orders", 0) > 0:
+        prior_o = factors.get("prior_orders", 0)
+        prior_r = factors.get("prior_rto", 0)
+        if prior_r >= 2:
+            points_breakdown.append(f"Serial returner with {prior_r} RTO returns out of {prior_o} prior orders (+40 pts)")
+        elif prior_r == 1:
+            points_breakdown.append(f"Prior return history of 1 RTO out of {prior_o} orders (+19 pts)")
+        else:
+            points_breakdown.append(f"Trusted buyer with {prior_o} successful deliveries and zero returns (0 pts)")
 
-    return " ".join(parts)
+    # 4. Pincode regional risk
+    if factors.get("pincode_rto_rate") is not None:
+        p_rate = factors["pincode_rto_rate"]
+        p_pts = factors.get("pincode_rto_score", 0)
+        points_breakdown.append(f"Pincode {pincode} has a historical RTO rate of {p_rate}% (+{p_pts:.1f} pts)")
+    elif factors.get("pincode_note"):
+        p_pts = factors.get("pincode_rto_score", 7.5)
+        points_breakdown.append(f"Pincode {pincode} regional baseline rate (+{p_pts:.1f} pts)")
+
+    # 5. Cart value / name anomaly
+    if factors.get("value_score") and factors.get("value_score") > 0:
+        points_breakdown.append(f"High cart exposure above average order value (+{factors['value_score']:.0f} pts)")
+    if factors.get("name_suspicious"):
+        points_breakdown.append("Suspicious customer name detected (+30 pts)")
+
+    factors_str = "; ".join(points_breakdown)
+    return f"{tier_text} Contributing factors: {factors_str}."

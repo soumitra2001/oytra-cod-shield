@@ -409,16 +409,19 @@
               </div>
 
               <!-- Operations Reason -->
-              <div class="bg-amber-50/60 border border-amber-200 rounded-xl p-3 text-xs text-amber-950 leading-relaxed">
-                <span class="font-bold block text-[11px] text-amber-900 mb-0.5">Operations Explanation:</span>
-                <p id="modal-reason">---</p>
+              <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-950 space-y-2">
+                <div class="flex items-center gap-1.5 font-bold text-[11px] text-amber-900">
+                  <i data-lucide="file-text" class="w-3.5 h-3.5 text-amber-600"></i>
+                  <span>Score Explanation & Why This Action Was Assigned:</span>
+                </div>
+                <div id="modal-reason" class="text-slate-800 leading-relaxed font-normal">---</div>
               </div>
 
-              <!-- Factors -->
+              <!-- Factors Point Breakdown -->
               <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">Evaluated Factors</span>
-                <div id="modal-factors" class="flex flex-wrap gap-1.5 text-[11px]">
-                  <!-- Dynamic badges -->
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">Contributing Factor Breakdown</span>
+                <div id="modal-factors" class="space-y-1 text-[11px]">
+                  <!-- Dynamic breakdown items -->
                 </div>
               </div>
             </div>
