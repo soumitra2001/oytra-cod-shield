@@ -27,14 +27,15 @@
         </div>
 
         <!-- Navigation Tabs -->
-        <nav class="flex space-x-1 sm:space-x-4">
+        <nav class="flex space-x-1 sm:space-x-3">
           <button onclick="switchTab('evaluator')" id="tab-evaluator" class="nav-tab active px-3 py-2 text-sm text-slate-700 hover:text-emerald-600 transition flex items-center gap-2">
-            <i data-lucide="zap" class="w-4 h-4"></i>
-            <span>Order Evaluator</span>
+            <i data-lucide="package-plus" class="w-4 h-4"></i>
+            <span>Create Order</span>
           </button>
-          <button onclick="switchTab('whatsapp')" id="tab-whatsapp" class="nav-tab px-3 py-2 text-sm text-slate-700 hover:text-emerald-600 transition flex items-center gap-2">
-            <i data-lucide="message-square" class="w-4 h-4"></i>
-            <span>WhatsApp Simulator</span>
+          <button onclick="switchTab('created')" id="tab-created" class="nav-tab px-3 py-2 text-sm text-slate-700 hover:text-emerald-600 transition flex items-center gap-2">
+            <i data-lucide="list-checks" class="w-4 h-4"></i>
+            <span>Created Orders</span>
+            <span id="created-orders-badge" class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">0</span>
           </button>
           <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-tab px-3 py-2 text-sm text-slate-700 hover:text-emerald-600 transition flex items-center gap-2">
             <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
@@ -45,8 +46,8 @@
             <span>Rules & Thresholds</span>
           </button>
           <button onclick="switchTab('orders')" id="tab-orders" class="nav-tab px-3 py-2 text-sm text-slate-700 hover:text-emerald-600 transition flex items-center gap-2">
-            <i data-lucide="table" class="w-4 h-4"></i>
-            <span>Order Database</span>
+            <i data-lucide="database" class="w-4 h-4"></i>
+            <span>Historical DB (1,988)</span>
           </button>
         </nav>
 
@@ -211,126 +212,42 @@
       </div>
     </section>
 
-    <!-- ==================== TAB 2: WHATSAPP SIMULATOR ==================== -->
-    <section id="view-whatsapp" class="hidden space-y-6">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <!-- ==================== TAB 2: CREATED & LIVE ORDERS ==================== -->
+    <section id="view-created" class="hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 class="text-2xl font-bold text-slate-900">Interactive WhatsApp Flow Simulator</h2>
-          <p class="text-sm text-slate-600">Simulate customer conversational response states for **Ship after confirmation** and **Nudge to prepaid**.</p>
+          <h2 class="text-2xl font-bold text-slate-900">Created & Live Orders</h2>
+          <p class="text-sm text-slate-600">All orders created & evaluated by the engine. Click any order row to inspect full details and interact via the live WhatsApp simulator (if confirmation/nudge stage).</p>
         </div>
-
-        <div class="inline-flex p-1 bg-slate-200 rounded-xl">
-          <button onclick="setFlowMode('confirmation')" id="btn-flow-confirm" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-white shadow-sm text-emerald-800 transition">
-            1. Confirmation Flow
-          </button>
-          <button onclick="setFlowMode('nudge_prepaid')" id="btn-flow-nudge" class="px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">
-            2. Nudge to Prepaid Flow
+        <div class="flex items-center gap-3">
+          <input type="text" id="created-order-search" placeholder="Search customer, ID, or city..." oninput="filterCreatedOrdersTable()" class="text-xs border border-slate-300 rounded-xl px-3 py-2 w-60 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <button onclick="loadCreatedOrdersFromDB()" class="px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded-xl shadow-sm hover:bg-slate-50 flex items-center gap-1.5">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <!-- Controls & Discount Explanation -->
-        <div class="lg:col-span-6 space-y-6">
-          <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <h3 class="font-semibold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3">
-              <i data-lucide="sliders-horizontal" class="w-4 h-4 text-emerald-600"></i>
-              Simulator Controls
-            </h3>
-
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Name</label>
-                <input type="text" id="sim-name" value="Rahul Sharma" oninput="refreshSimulator()" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Order Value</label>
-                <input type="number" id="sim-value" value="649" oninput="refreshSimulator()" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2" />
-              </div>
-            </div>
-
-            <div>
-              <span class="block text-xs font-semibold text-slate-600 mb-2">Simulate Customer Actions:</span>
-              <div class="grid grid-cols-2 gap-2">
-                <button onclick="sendSimReply('YES')" class="px-3 py-2 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition text-left flex items-center justify-between">
-                  <span>Confirm: "YES"</span>
-                  <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                </button>
-                <button onclick="sendSimReply('NO')" class="px-3 py-2 text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 transition text-left flex items-center justify-between">
-                  <span>Cancel: "NO"</span>
-                  <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                </button>
-                <button onclick="sendSimReply('Haan bhej do please')" class="px-3 py-2 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition text-left flex items-center justify-between">
-                  <span>Hinglish: "Haan bhej do"</span>
-                  <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                </button>
-                <button onclick="sendSimReply('When will it arrive?')" class="px-3 py-2 text-xs font-semibold bg-slate-50 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-100 transition text-left flex items-center justify-between">
-                  <span>Random Question</span>
-                  <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
-                </button>
-              </div>
-
-              <div class="mt-3">
-                <button onclick="triggerSimTimeout()" class="w-full px-3 py-2 text-xs font-semibold bg-orange-50 text-orange-800 border border-orange-200 rounded-lg hover:bg-orange-100 transition flex items-center justify-center gap-1.5">
-                  <i data-lucide="clock" class="w-3.5 h-3.5"></i>
-                  <span>Simulate 24-Hour Timeout (No Response)</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="pt-3 border-t border-slate-100 flex justify-between items-center">
-              <span class="text-xs text-slate-500">Live Conversation State:</span>
-              <span id="sim-status-pill" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                PENDING_REPLY
-              </span>
-            </div>
-          </div>
-
-          <!-- Mathematical Justification Card -->
-          <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-3">
-            <h4 class="font-bold text-sm text-emerald-900 flex items-center gap-2">
-              <i data-lucide="calculator" class="w-4 h-4 text-emerald-700"></i>
-              Prepaid Nudge Discount Economics (Why ₹40?)
-            </h4>
-            <div class="text-xs text-emerald-800 space-y-1.5 leading-relaxed">
-              <p>• Expected return cost per COD order: <strong>28% × ₹169.40 = ₹47.43</strong></p>
-              <p>• Expected return cost per Prepaid order: <strong>4% × ₹169.40 = ₹6.78</strong></p>
-              <p>• Gross RTO savings from converting COD → Prepaid: <strong>₹47.43 - ₹6.78 = ₹40.65</strong></p>
-              <p class="font-medium bg-emerald-100/60 p-2 rounded-lg border border-emerald-300">
-                Offering <strong>₹40 OFF</strong> captures nearly the entire expected RTO cost reduction while keeping customer acquisition profitable and eliminating delivery door friction.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Phone Mockup Frame -->
-        <div class="lg:col-span-6 flex justify-center">
-          <div class="phone-mockup">
-            <!-- Header -->
-            <div class="phone-header">
-              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">
-                🌿
-              </div>
-              <div class="flex-1">
-                <div class="font-bold text-sm leading-tight">Oytra Care</div>
-                <div class="text-[11px] text-emerald-100">WhatsApp Official Business</div>
-              </div>
-              <i data-lucide="more-vertical" class="w-4 h-4 text-emerald-100"></i>
-            </div>
-
-            <!-- Messages Stream -->
-            <div id="chat-messages" class="chat-area">
-              <!-- Dynamically populated -->
-            </div>
-
-            <!-- Input Bar -->
-            <div class="phone-input-bar">
-              <input type="text" id="sim-custom-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendCustomReply()" class="flex-1 text-xs bg-white rounded-full px-3 py-2 border border-slate-300 focus:outline-none" />
-              <button onclick="sendCustomReply()" class="w-8 h-8 rounded-full bg-[#075e54] text-white flex items-center justify-center hover:bg-[#064e46]">
-                <i data-lucide="send" class="w-3.5 h-3.5"></i>
-              </button>
-            </div>
-          </div>
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+              <tr>
+                <th class="py-3 px-4">Order ID</th>
+                <th class="py-3 px-4">Customer</th>
+                <th class="py-3 px-4">Location</th>
+                <th class="py-3 px-4">Value</th>
+                <th class="py-3 px-4">Risk Score</th>
+                <th class="py-3 px-4">Engine Action</th>
+                <th class="py-3 px-4">Operations Explanation</th>
+                <th class="py-3 px-4">Live Status</th>
+                <th class="py-3 px-4 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="created-orders-tbody" class="divide-y divide-slate-100 text-slate-700">
+              <!-- Dynamically populated from /api/orders/created -->
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -482,56 +399,184 @@
       </div>
     </section>
 
-    <!-- ==================== ORDER DETAILS MODAL ==================== -->
-    <div id="order-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+    <!-- ==================== ORDER DETAILS & WHATSAPP MODAL ==================== -->
+    <div id="order-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+      <div class="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto space-y-4">
+        
+        <!-- Header -->
         <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div>
-            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Order Detail</span>
-            <h3 class="text-lg font-bold text-slate-900" id="modal-order-id">ORD-XXXX</h3>
+          <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm">
+              📦
+            </span>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-lg font-bold text-slate-900" id="modal-order-id">ORD-XXXX</h3>
+                <span id="modal-status-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">
+                  STATUS
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 font-medium" id="modal-order-sub">Order Details & Decision Execution</p>
+            </div>
           </div>
-          <button onclick="closeOrderModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600">
+          <button onclick="closeOrderModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition">
             <i data-lucide="x" class="w-4 h-4"></i>
           </button>
         </div>
 
-        <div class="space-y-3 text-xs text-slate-600">
-          <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <div><span class="text-slate-400">Customer:</span> <strong id="modal-customer" class="text-slate-800">---</strong></div>
-            <div><span class="text-slate-400">Phone:</span> <strong id="modal-phone" class="text-slate-800">---</strong></div>
-            <div><span class="text-slate-400">Location:</span> <strong id="modal-location" class="text-slate-800">---</strong></div>
-            <div><span class="text-slate-400">Order Value:</span> <strong id="modal-value" class="text-slate-800">---</strong></div>
-          </div>
-
-          <div>
-            <span class="text-slate-400 block mb-0.5">Delivery Address:</span>
-            <p id="modal-address" class="text-slate-800 bg-slate-50 p-2 rounded-lg border border-slate-200 font-mono text-[11px]">---</p>
-          </div>
-
-          <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-            <div>
-              <span class="text-slate-400 block text-[11px]">Evaluation Decision</span>
-              <span id="modal-decision-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase mt-1 inline-block">---</span>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Left Column: Order & Risk Intelligence Specs (lg:col-span-6) -->
+          <div class="lg:col-span-6 space-y-4">
+            <!-- Customer Card -->
+            <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2 text-xs">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Customer & Shipping Information</span>
+              <div class="grid grid-cols-2 gap-2 text-slate-700 pt-1">
+                <div><span class="text-slate-400 block text-[10px]">Customer Name</span> <strong id="modal-customer" class="text-slate-900 font-semibold">---</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">Phone Number</span> <strong id="modal-phone" class="text-slate-900 font-mono">---</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">Location (City, State)</span> <strong id="modal-location" class="text-slate-900 font-medium">---</strong></div>
+                <div><span class="text-slate-400 block text-[10px]">Order Value</span> <strong id="modal-value" class="text-emerald-700 font-bold text-sm">---</strong></div>
+              </div>
+              <div class="pt-2 border-t border-slate-200/60">
+                <span class="text-slate-400 block text-[10px] mb-0.5">Delivery Address:</span>
+                <p id="modal-address" class="text-slate-800 bg-white p-2 rounded-lg border border-slate-200 font-mono text-[11px] leading-relaxed">---</p>
+              </div>
             </div>
-            <div class="text-right">
-              <span class="text-slate-400 block text-[11px]">Risk Score</span>
-              <span id="modal-score" class="text-base font-black text-slate-900">---</span>
-            </div>
-            <div class="text-right">
-              <span class="text-slate-400 block text-[11px]">DB Status</span>
-              <span id="modal-status" class="text-xs font-bold text-emerald-700">---</span>
+
+            <!-- Risk Score & Decision Card -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Engine Recommendation</span>
+                  <div class="mt-1">
+                    <span id="modal-decision-badge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border">---</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Risk Score</span>
+                  <div class="text-2xl font-black text-slate-900" id="modal-score">--/100</div>
+                </div>
+              </div>
+
+              <!-- Risk bar -->
+              <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div id="modal-score-bar" class="h-full bg-emerald-500 transition-all duration-300" style="width: 20%"></div>
+              </div>
+
+              <!-- Operations Reason -->
+              <div class="bg-amber-50/60 border border-amber-200 rounded-xl p-3 text-xs text-amber-950 leading-relaxed">
+                <span class="font-bold block text-[11px] text-amber-900 mb-0.5">Operations Explanation:</span>
+                <p id="modal-reason">---</p>
+              </div>
+
+              <!-- Factors -->
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">Evaluated Factors</span>
+                <div id="modal-factors" class="flex flex-wrap gap-1.5 text-[11px]">
+                  <!-- Dynamic badges -->
+                </div>
+              </div>
             </div>
           </div>
 
-          <div>
-            <span class="text-slate-400 block mb-0.5">Operations Explanation:</span>
-            <p id="modal-reason" class="text-slate-800 bg-amber-50/50 border border-amber-200 p-2.5 rounded-lg leading-relaxed">---</p>
-          </div>
+          <!-- Right Column: Interactive WhatsApp Simulator OR Direct Action Banner (lg:col-span-6) -->
+          <div class="lg:col-span-6 flex flex-col justify-center">
+            
+            <!-- Context 1: WHATSAPP SIMULATOR (for Confirm & Nudge Prepaid) -->
+            <div id="modal-whatsapp-container" class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <i data-lucide="message-square" class="w-4 h-4 text-emerald-600"></i>
+                  <span>WhatsApp Interaction Stage</span>
+                </span>
+                <span id="modal-wa-state-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                  AWAITING_CUSTOMER
+                </span>
+              </div>
 
-          <div id="modal-action-box" class="pt-2">
-            <!-- Dynamic WhatsApp button or dispatch button -->
+              <!-- Phone Mockup Frame inside modal -->
+              <div class="phone-mockup shadow-lg" style="height: 440px; max-width: 100%;">
+                <!-- Header -->
+                <div class="phone-header py-2 px-3">
+                  <div class="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">🌿</div>
+                  <div class="flex-1">
+                    <div class="font-bold text-xs leading-tight">Oytra Care</div>
+                    <div class="text-[10px] text-emerald-100">WhatsApp Official Business</div>
+                  </div>
+                </div>
+
+                <!-- Messages Stream -->
+                <div id="modal-chat-messages" class="chat-area p-3 space-y-2 text-xs">
+                  <!-- Dynamically populated -->
+                </div>
+
+                <!-- Input Bar -->
+                <div class="phone-input-bar p-2 bg-slate-100 flex items-center gap-1.5 border-t border-slate-200">
+                  <input type="text" id="modal-chat-input" placeholder="Reply as customer..." onkeydown="if(event.key==='Enter') sendModalCustomReply()" class="flex-1 text-xs bg-white rounded-full px-3 py-1.5 border border-slate-300 focus:outline-none" />
+                  <button onclick="sendModalCustomReply()" class="w-7 h-7 rounded-full bg-[#075e54] text-white flex items-center justify-center hover:bg-[#064e46]">
+                    <i data-lucide="send" class="w-3 h-3"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Customer Simulated Reply Quick Buttons -->
+              <div class="space-y-1.5 pt-1">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Simulate Customer Actions:</span>
+                <div class="grid grid-cols-2 gap-1.5 text-xs">
+                  <button onclick="sendModalSimReply('YES')" class="px-2.5 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition flex items-center justify-between">
+                    <span>Confirm: "YES"</span>
+                    <i data-lucide="check" class="w-3 h-3"></i>
+                  </button>
+                  <button onclick="sendModalSimReply('NO')" class="px-2.5 py-1.5 text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 transition flex items-center justify-between">
+                    <span>Cancel: "NO"</span>
+                    <i data-lucide="x" class="w-3 h-3"></i>
+                  </button>
+                  <button onclick="sendModalSimReply('Haan bhej do please')" class="px-2.5 py-1.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition flex items-center justify-between">
+                    <span>Hinglish: "Haan bhej do"</span>
+                    <i data-lucide="message-circle" class="w-3 h-3"></i>
+                  </button>
+                  <button onclick="triggerModalTimeout()" class="px-2.5 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-200 transition flex items-center justify-between">
+                    <span>24h Timeout</span>
+                    <i data-lucide="clock" class="w-3 h-3"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Context 2: DIRECT SHIPPING (Ship As-Is) -->
+            <div id="modal-ship-container" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-3">
+              <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-xl font-bold">
+                🚚
+              </div>
+              <h4 class="font-bold text-emerald-900 text-base">Direct Shipping Release</h4>
+              <p class="text-xs text-emerald-800 leading-relaxed max-w-sm mx-auto">
+                This order was classified as <strong>Low Risk</strong>. Per business rules, it is released directly to Delhivery without WhatsApp confirmation friction, ensuring highest customer conversion and preserving ad marketing acquisition.
+              </p>
+              <div class="pt-2">
+                <span class="inline-block bg-emerald-600 text-white font-semibold text-xs px-3 py-1.5 rounded-lg shadow-sm">
+                  Dispatched to Courier
+                </span>
+              </div>
+            </div>
+
+            <!-- Context 3: HOLD / CANCELLED -->
+            <div id="modal-cancel-container" class="hidden bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center space-y-3">
+              <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center mx-auto text-xl font-bold">
+                🛑
+              </div>
+              <h4 class="font-bold text-rose-900 text-base">Order Held / Blocked</h4>
+              <p class="text-xs text-rose-800 leading-relaxed max-w-sm mx-auto">
+                This order was classified as <strong>High Risk / Serial Returner</strong>. To protect unit economics, COD fulfillment is halted prior to courier handover, saving ₹169.40 in guaranteed reverse logistics loss.
+              </p>
+              <div class="pt-2">
+                <span class="inline-block bg-rose-600 text-white font-semibold text-xs px-3 py-1.5 rounded-lg shadow-sm">
+                  Fulfillment Cancelled
+                </span>
+              </div>
+            </div>
+
           </div>
         </div>
+
       </div>
     </div>
 

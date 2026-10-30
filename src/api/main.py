@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.config import get_db, engine as db_engine
+from src.config import get_db, engine as db_engine, IS_POSTGRES
 from src.engine.decision_engine import make_decision
 from src.engine.llm_analyzer import analyze_order_with_llm
 from src.engine.backtest import run_backtest
@@ -135,6 +135,45 @@ def get_orders(limit: int = 100, decision: str | None = None):
                 "decision": r[11],
                 "risk_score": float(r[12]) if r[12] is not None else None,
                 "reason": r[13],
+            }
+            for r in rows
+        ]
+
+
+@app.get("/api/orders/created")
+def get_created_orders():
+    """Retrieve newly created/evaluated orders from the database."""
+    with db_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT o.order_id, o.customer_name, o.phone, o.address, o.city, o.state, o.pincode,
+                   o.order_value, o.customer_prior_orders, o.customer_prior_rto, o.final_status,
+                   od.decision, od.risk_score, od.reason, od.risk_category, od.llm_used,
+                   o.order_datetime
+            FROM orders o
+            JOIN order_decisions od ON o.order_id = od.order_id
+            WHERE o.final_status NOT IN ('DELIVERED', 'RTO')
+               OR o.order_id LIKE 'KT102%' OR o.order_id LIKE 'ORD-%' OR o.order_id LIKE 'TEST_%'
+            ORDER BY o.id DESC
+        """)).fetchall()
+        return [
+            {
+                "order_id": r[0],
+                "customer_name": r[1],
+                "phone": r[2],
+                "address": r[3],
+                "city": r[4],
+                "state": r[5],
+                "pincode": r[6],
+                "order_value": float(r[7] or 0),
+                "customer_prior_orders": r[8],
+                "customer_prior_rto": r[9],
+                "final_status": r[10],
+                "decision": r[11],
+                "risk_score": float(r[12]) if r[12] is not None else None,
+                "reason": r[13],
+                "risk_category": r[14],
+                "llm_used": bool(r[15]),
+                "order_datetime": str(r[16]),
             }
             for r in rows
         ]

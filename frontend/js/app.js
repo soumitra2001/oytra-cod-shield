@@ -5,7 +5,9 @@
 let dynamicPresets = {};
 let allRules = [];
 let allOrders = [];
-let currentSimFlow = "confirmation";
+let createdOrders = [];
+let currentModalOrder = null;
+let currentModalFlow = "confirmation";
 
 // Initialize UI
 document.addEventListener("DOMContentLoaded", () => {
@@ -16,25 +18,31 @@ document.addEventListener("DOMContentLoaded", () => {
   loadRulesFromDB();
   loadDashboardMetricsFromDB();
   loadOrdersFromDB();
+  loadCreatedOrdersFromDB();
 });
 
 // Tab Switching
 function switchTab(tabName) {
-  const tabs = ["evaluator", "whatsapp", "dashboard", "rules", "orders"];
+  const tabs = ["evaluator", "created", "dashboard", "rules", "orders"];
   tabs.forEach((t) => {
     const navBtn = document.getElementById(`tab-${t}`);
     const view = document.getElementById(`view-${t}`);
-    if (t === tabName) {
-      navBtn.classList.add("active");
-      view.classList.remove("hidden");
-    } else {
-      navBtn.classList.remove("active");
-      view.classList.add("hidden");
+    if (navBtn && view) {
+      if (t === tabName) {
+        navBtn.classList.add("active");
+        view.classList.remove("hidden");
+      } else {
+        navBtn.classList.remove("active");
+        view.classList.add("hidden");
+      }
     }
   });
 
-  if (tabName === "whatsapp") {
-    refreshSimulator();
+  if (tabName === "created") {
+    loadCreatedOrdersFromDB();
+  }
+  if (tabName === "dashboard") {
+    loadDashboardMetricsFromDB();
   }
   if (window.lucide) {
     lucide.createIcons();
@@ -113,7 +121,7 @@ async function handleEvaluate(e) {
   };
 
   const btn = document.getElementById("btn-eval");
-  btn.innerHTML = `<span class="animate-spin mr-2">⚙️</span> Evaluating via Engine...`;
+  btn.innerHTML = `<span class="animate-spin mr-2">⚙️</span> Evaluating via Engine & Saving to DB...`;
   btn.disabled = true;
 
   try {
@@ -130,6 +138,7 @@ async function handleEvaluate(e) {
 
     const data = await res.json();
     renderEvaluationResult(data, payload);
+    loadCreatedOrdersFromDB();
   } catch (err) {
     alert("❌ Error evaluating order: " + err.message);
   } finally {
@@ -158,28 +167,28 @@ function renderEvaluationResult(data, orderInput) {
   badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border";
 
   if (data.decision === "ship") {
-    badge.classList.add("badge-ship");
+    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-emerald-100 text-emerald-800 border-emerald-300";
     badge.innerText = "SHIP AS-IS";
     bar.className = "h-full bg-emerald-500 transition-all duration-500";
     catText.innerText = "Low Risk • Safe to release";
   } else if (data.decision === "confirm") {
-    badge.classList.add("badge-confirm");
+    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-amber-100 text-amber-800 border-amber-300";
     badge.innerText = "WHATSAPP CONFIRM";
     bar.className = "h-full bg-amber-500 transition-all duration-500";
     catText.innerText = "Medium Risk • Require intent verification";
   } else if (data.decision === "nudge_prepaid") {
-    badge.classList.add("badge-nudge");
+    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-orange-100 text-orange-800 border-orange-300";
     badge.innerText = "NUDGE TO PREPAID";
     bar.className = "h-full bg-orange-500 transition-all duration-500";
     catText.innerText = "High Risk • Offer discount to pay online";
   } else {
-    badge.classList.add("badge-cancel");
+    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-rose-100 text-rose-800 border-rose-300";
     badge.innerText = "HOLD / CANCEL";
     bar.className = "h-full bg-rose-500 transition-all duration-500";
     catText.innerText = "Severe Risk • Serial RTO / Dummy order";
   }
 
-  // Plain-English Explanation (required by assignment)
+  // Plain-English Explanation
   document.getElementById("res-reason").innerText = data.reason || "No explanation returned.";
 
   // Dynamic Factors
@@ -211,435 +220,246 @@ function renderEvaluationResult(data, orderInput) {
 
   // Action Buttons
   const actionsContainer = document.getElementById("res-actions-container");
-  if (data.decision === "ship") {
-    actionsContainer.innerHTML = `
-      <button onclick="alert('✅ Order ${orderInput.order_id} released to shipping courier dispatch!')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
-        <i data-lucide="check-circle" class="w-4 h-4"></i>
-        <span>Release Order to Courier (Dispatch Immediately)</span>
-      </button>
+  let actionHtml = "";
+  if (data.decision === "confirm" || data.decision === "nudge_prepaid") {
+    actionHtml = `
+      <div class="space-y-2">
+        <button onclick="openOrderModal('${orderInput.order_id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
+          <i data-lucide="message-square" class="w-4 h-4"></i>
+          <span>Open Order Details & WhatsApp Flow (#${orderInput.order_id})</span>
+        </button>
+        <button onclick="switchTab('created')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2 text-xs">
+          <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
+          <span>View in Created Orders Tab</span>
+        </button>
+      </div>
     `;
-  } else if (data.decision === "confirm") {
-    actionsContainer.innerHTML = `
-      <button onclick="launchSimulatorWithOrder('${orderInput.customer_name}', '${orderInput.order_id}', ${orderInput.order_value}, 'confirmation')" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
-        <i data-lucide="message-square" class="w-4 h-4"></i>
-        <span>Trigger WhatsApp Confirmation Flow</span>
-      </button>
-    `;
-  } else if (data.decision === "nudge_prepaid") {
-    actionsContainer.innerHTML = `
-      <button onclick="launchSimulatorWithOrder('${orderInput.customer_name}', '${orderInput.order_id}', ${orderInput.order_value}, 'nudge_prepaid')" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
-        <i data-lucide="percent" class="w-4 h-4"></i>
-        <span>Send WhatsApp Prepaid Discount Link (Pay Online)</span>
-      </button>
+  } else if (data.decision === "ship") {
+    actionHtml = `
+      <div class="space-y-2">
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+          <span>Order is low risk — Released directly to courier without customer friction.</span>
+        </div>
+        <button onclick="switchTab('created')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2 text-xs">
+          <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
+          <span>View in Created Orders Tab</span>
+        </button>
+      </div>
     `;
   } else {
-    actionsContainer.innerHTML = `
-      <button onclick="alert('🛑 Order ${orderInput.order_id} hold/cancelled. ₹169.40 dead shipping saved.')" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
-        <i data-lucide="ban" class="w-4 h-4"></i>
-        <span>Confirm Order Cancellation (Zero False Positives)</span>
-      </button>
+    actionHtml = `
+      <div class="space-y-2">
+        <div class="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+          <i data-lucide="ban" class="w-4 h-4 text-rose-600"></i>
+          <span>High risk serial returner — Held from shipping. ₹169.40 RTO loss saved.</span>
+        </div>
+        <button onclick="switchTab('created')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2 text-xs">
+          <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
+          <span>View in Created Orders Tab</span>
+        </button>
+      </div>
     `;
   }
+  actionsContainer.innerHTML = actionHtml;
 
   if (window.lucide) lucide.createIcons();
 }
 
-// ----------------- WHATSAPP SIMULATOR (DYNAMIC API) -----------------
-function setFlowMode(mode) {
-  currentSimFlow = mode;
-  document.getElementById("btn-flow-confirm").className = mode === "confirmation" 
-    ? "px-4 py-1.5 text-xs font-semibold rounded-lg bg-white shadow-sm text-emerald-800 transition" 
-    : "px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition";
-
-  document.getElementById("btn-flow-nudge").className = mode === "nudge_prepaid"
-    ? "px-4 py-1.5 text-xs font-semibold rounded-lg bg-white shadow-sm text-emerald-800 transition"
-    : "px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition";
-
-  refreshSimulator();
-}
-
-function launchSimulatorWithOrder(name, orderId, val, mode) {
-  document.getElementById("sim-name").value = name;
-  document.getElementById("sim-value").value = val;
-  setFlowMode(mode);
-  switchTab("whatsapp");
-}
-
-async function refreshSimulator() {
-  const name = document.getElementById("sim-name").value.trim() || "Customer";
-  const val = parseFloat(document.getElementById("sim-value").value) || 649;
-  const orderId = document.getElementById("inp-order-id")?.value || "KT101990";
-
-  const chat = document.getElementById("chat-messages");
-  chat.innerHTML = "";
-
-  updateSimPill("INITIALIZING...", "bg-slate-100 text-slate-600");
+// ----------------- CREATED ORDERS TAB -----------------
+async function loadCreatedOrdersFromDB() {
+  const tbody = document.getElementById("created-orders-tbody");
+  if (!tbody) return;
 
   try {
-    const res = await fetch("/api/whatsapp/simulate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_name: name,
-        order_id: orderId,
-        order_value: val,
-        flow_type: currentSimFlow,
-        action: "init",
-      }),
-    });
+    const res = await fetch("/api/orders/created");
+    if (!res.ok) throw new Error("Could not fetch created orders");
+    createdOrders = await res.json();
 
-    if (!res.ok) {
-      throw new Error(`Failed to initialize WhatsApp flow: HTTP ${res.status}`);
+    const badge = document.getElementById("created-orders-badge");
+    if (badge) {
+      badge.innerText = createdOrders.length;
     }
 
-    const data = await res.json();
-    appendBotMessage(data.message.replace(/\n/g, "<br>"));
-    updateSimPill(data.status, "bg-amber-100 text-amber-800");
+    renderCreatedOrdersTable(createdOrders);
   } catch (err) {
-    appendBotMessage(`⚠️ Error generating message: ${err.message}`);
-    updateSimPill("ERROR", "bg-rose-100 text-rose-800");
+    tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-rose-500 font-semibold">⚠️ Failed to load created orders: ${err.message}</td></tr>`;
   }
 }
 
-async function sendSimReply(replyText) {
-  appendUserMessage(replyText);
-
-  const name = document.getElementById("sim-name").value.trim() || "Customer";
-  const val = parseFloat(document.getElementById("sim-value").value) || 649;
-  const orderId = document.getElementById("inp-order-id")?.value || "KT101990";
-
-  updateSimPill("PROCESSING...", "bg-blue-100 text-blue-800");
-
-  try {
-    const res = await fetch("/api/whatsapp/simulate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_name: name,
-        order_id: orderId,
-        order_value: val,
-        flow_type: currentSimFlow,
-        action: "reply",
-        reply_text: replyText,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Reply processing failed: HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    appendBotMessage(data.response_message.replace(/\n/g, "<br>"));
-
-    let pillStyle = "bg-slate-100 text-slate-700";
-    if (data.status === "CONFIRMED") pillStyle = "bg-emerald-100 text-emerald-800";
-    if (data.status === "REJECTED") pillStyle = "bg-rose-100 text-rose-800";
-    if (data.status === "CONVERTED_PREPAID") pillStyle = "bg-indigo-100 text-indigo-800";
-
-    updateSimPill(data.status, pillStyle);
-  } catch (err) {
-    appendBotMessage(`⚠️ Error processing reply: ${err.message}`);
-    updateSimPill("ERROR", "bg-rose-100 text-rose-800");
-  }
-}
-
-async function triggerSimTimeout() {
-  appendUserMessage("<i>[No reply from customer for 24 hours]</i>");
-
-  const name = document.getElementById("sim-name").value.trim() || "Customer";
-  const val = parseFloat(document.getElementById("sim-value").value) || 649;
-  const orderId = document.getElementById("inp-order-id")?.value || "KT101990";
-
-  try {
-    const res = await fetch("/api/whatsapp/simulate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_name: name,
-        order_id: orderId,
-        order_value: val,
-        flow_type: currentSimFlow,
-        action: "timeout",
-      }),
-    });
-
-    const data = await res.json();
-    appendBotMessage(data.response_message.replace(/\n/g, "<br>"));
-    updateSimPill(data.status, "bg-orange-100 text-orange-800");
-  } catch (err) {
-    appendBotMessage(`⚠️ Error processing timeout: ${err.message}`);
-  }
-}
-
-function sendCustomReply() {
-  const input = document.getElementById("sim-custom-input");
-  const val = input.value.trim();
-  if (!val) return;
-  input.value = "";
-  sendSimReply(val);
-}
-
-function appendBotMessage(text) {
-  const chat = document.getElementById("chat-messages");
-  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  chat.innerHTML += `
-    <div class="chat-msg chat-msg-bot">
-      ${text}
-      <span class="chat-msg-time">${time}</span>
-    </div>
-  `;
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function appendUserMessage(text) {
-  const chat = document.getElementById("chat-messages");
-  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  chat.innerHTML += `
-    <div class="chat-msg chat-msg-user">
-      ${text}
-      <span class="chat-msg-time">${time}</span>
-    </div>
-  `;
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function updateSimPill(text, classes) {
-  const pill = document.getElementById("sim-status-pill");
-  pill.className = `text-xs font-bold px-2.5 py-0.5 rounded-full ${classes}`;
-  pill.innerText = text;
-}
-
-// ----------------- FOUNDER DASHBOARD (LIVE BACKTEST) -----------------
-async function loadDashboardMetricsFromDB() {
-  const errBox = document.getElementById("dash-error");
-  try {
-    const res = await fetch("/api/backtest");
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    errBox.classList.add("hidden");
-
-    const b = data.buckets;
-    if (!b || !data.financial) {
-      throw new Error("No evaluated decisions returned by engine");
-    }
-
-    const total = data.total_orders || 1;
-
-    // 4 Decision Buckets
-    document.getElementById("dash-count-ship").innerText = (b.ship?.count ?? 0).toLocaleString();
-    document.getElementById("dash-pct-ship").innerText = `${((b.ship?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
-
-    document.getElementById("dash-count-confirm").innerText = (b.confirm?.count ?? 0).toLocaleString();
-    document.getElementById("dash-pct-confirm").innerText = `${((b.confirm?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
-
-    document.getElementById("dash-count-nudge").innerText = (b.nudge_prepaid?.count ?? 0).toLocaleString();
-    document.getElementById("dash-pct-nudge").innerText = `${((b.nudge_prepaid?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
-
-    document.getElementById("dash-count-cancel").innerText = (b.cancel?.count ?? 0).toLocaleString();
-    document.getElementById("dash-pct-cancel").innerText = `${((b.cancel?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
-
-    // Financial Metrics
-    const fin = data.financial;
-    document.getElementById("dash-saved").innerText = `₹${(fin.saved_from_cancels ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    document.getElementById("dash-lost").innerText = `₹${(fin.lost_from_cancels ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    document.getElementById("dash-nudge-gain").innerText = `+₹${(fin.saved_from_nudges ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    document.getElementById("dash-net-impact").innerText = `+₹${(fin.net_impact ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-
-    document.getElementById("dash-saved-sub").innerText = `${b.cancel?.actual_rto ?? 0} high-risk returns halted`;
-    document.getElementById("dash-lost-sub").innerText = `${b.cancel?.actual_delivered ?? 0} genuine buyers cancelled`;
-  } catch (err) {
-    errBox.classList.remove("hidden");
-    errBox.innerText = `⚠️ Error fetching live dashboard calculations: ${err.message}. Please run 'python scripts/run_engine.py' to process all orders.`;
-    
-    // Clear display to prevent showing unverified numbers
-    document.getElementById("dash-count-ship").innerText = "---";
-    document.getElementById("dash-count-confirm").innerText = "---";
-    document.getElementById("dash-count-nudge").innerText = "---";
-    document.getElementById("dash-count-cancel").innerText = "---";
-    document.getElementById("dash-saved").innerText = "---";
-    document.getElementById("dash-lost").innerText = "---";
-    document.getElementById("dash-nudge-gain").innerText = "---";
-    document.getElementById("dash-net-impact").innerText = "---";
-  }
-}
-
-// ----------------- RULES & THRESHOLDS FROM DB -----------------
-async function loadRulesFromDB() {
-  try {
-    const res = await fetch("/api/rules");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    allRules = await res.json();
-    renderRules();
-  } catch (err) {
-    document.getElementById("rules-container").innerHTML = `
-      <div class="col-span-2 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
-        ⚠️ Failed to load decision rules from database: ${err.message}
-      </div>
-    `;
-  }
-}
-
-function renderRules() {
-  const container = document.getElementById("rules-container");
-  container.innerHTML = "";
-
-  const categories = {};
-  allRules.forEach((r) => {
-    if (!categories[r.category]) categories[r.category] = [];
-    categories[r.category].push(r);
-  });
-
-  for (const [cat, list] of Object.entries(categories)) {
-    let catHtml = `
-      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <h3 class="font-bold text-sm uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2">
-          ${cat} Controls
-        </h3>
-        <div class="space-y-4">
-    `;
-
-    list.forEach((r) => {
-      catHtml += `
-        <div class="flex items-center justify-between gap-4">
-          <div class="flex-1">
-            <div class="text-xs font-mono font-bold text-slate-800">${r.key}</div>
-            <div class="text-xs text-slate-500">${r.description}</div>
-          </div>
-          <input type="number" id="rule-inp-${r.key}" value="${r.value}" class="w-24 text-right text-xs font-bold border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
-        </div>
-      `;
-    });
-
-    catHtml += `</div></div>`;
-    container.innerHTML += catHtml;
-  }
-}
-
-async function saveAllRules() {
-  let count = 0;
-  for (const r of allRules) {
-    const el = document.getElementById(`rule-inp-${r.key}`);
-    if (el) {
-      const val = parseFloat(el.value);
-      if (val !== r.value) {
-        await fetch(`/api/rules/${r.key}?new_value=${val}`, { method: "PUT" });
-        count++;
-      }
-    }
-  }
-  alert(`✅ Saved ${count} updated rules directly to the database!`);
-  loadRulesFromDB();
-}
-
-// ----------------- ORDERS TABLE FROM DB -----------------
-async function loadOrdersFromDB() {
-  try {
-    const res = await fetch("/api/orders?limit=100");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    allOrders = await res.json();
-    renderOrdersTable(allOrders);
-  } catch (err) {
-    document.getElementById("orders-tbody").innerHTML = `
-      <tr>
-        <td colspan="8" class="p-6 text-center text-rose-600 font-semibold text-xs">
-          ⚠️ Failed to load orders from database: ${err.message}
-        </td>
-      </tr>
-    `;
-  }
-}
-
-function renderOrdersTable(orders) {
-  const tbody = document.getElementById("orders-tbody");
+function renderCreatedOrdersTable(orders) {
+  const tbody = document.getElementById("created-orders-tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
 
   if (orders.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">No matching orders found in database</td></tr>`;
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9" class="p-8 text-center text-slate-400">
+          <p class="font-medium text-slate-600">No Orders Created Yet</p>
+          <p class="text-xs text-slate-400 mt-1">Go to the <a href="javascript:switchTab('evaluator')" class="text-emerald-600 font-semibold underline">Create Order</a> tab to evaluate and persist orders.</p>
+        </td>
+      </tr>
+    `;
     return;
   }
 
-  orders.slice(0, 50).forEach((o) => {
+  orders.forEach((o) => {
     let badgeClass = "bg-slate-100 text-slate-700";
     if (o.decision === "ship") badgeClass = "bg-emerald-100 text-emerald-800";
     if (o.decision === "confirm") badgeClass = "bg-amber-100 text-amber-800";
     if (o.decision === "nudge_prepaid") badgeClass = "bg-orange-100 text-orange-800";
     if (o.decision === "cancel") badgeClass = "bg-rose-100 text-rose-800";
 
+    const hasWhatsApp = o.decision === "confirm" || o.decision === "nudge_prepaid";
+
     tbody.innerHTML += `
       <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openOrderModal('${o.order_id}')">
-        <td class="py-2.5 px-4 font-mono font-bold text-emerald-700 hover:underline">${o.order_id}</td>
-        <td class="py-2.5 px-4 font-medium">${o.customer_name || "N/A"}</td>
-        <td class="py-2.5 px-4 text-slate-500">${o.city || ""}, ${o.pincode || ""}</td>
-        <td class="py-2.5 px-4 font-semibold">₹${o.order_value || 0}</td>
-        <td class="py-2.5 px-4 font-bold">${o.risk_score !== null ? o.risk_score : "---"}</td>
-        <td class="py-2.5 px-4">
-          <span class="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${badgeClass}">
-            ${o.decision || "PENDING"}
+        <td class="py-3 px-4 font-mono font-bold text-emerald-700 hover:underline">#${o.order_id}</td>
+        <td class="py-3 px-4 font-semibold text-slate-900">${o.customer_name || "N/A"}</td>
+        <td class="py-3 px-4 text-slate-500">${o.city || ""}, ${o.state || ""}</td>
+        <td class="py-3 px-4 font-bold text-slate-800">₹${o.order_value || 0}</td>
+        <td class="py-3 px-4 font-extrabold text-slate-900">${o.risk_score !== null ? o.risk_score + '/100' : '---'}</td>
+        <td class="py-3 px-4">
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${badgeClass}">
+            ${o.decision ? o.decision.replace('_', ' ') : 'PENDING'}
           </span>
         </td>
-        <td class="py-2.5 px-4 text-slate-600 max-w-xs truncate">${o.reason || "Awaiting evaluation"}</td>
-        <td class="py-2.5 px-4 font-bold ${o.final_status === 'DELIVERED' || o.final_status === 'CONFIRMED' ? 'text-emerald-600' : 'text-rose-600'}">
-          ${o.final_status || "PENDING"}
+        <td class="py-3 px-4 text-slate-600 max-w-xs truncate text-[11px]">${o.reason || "Evaluated by engine"}</td>
+        <td class="py-3 px-4">
+          <span class="font-bold text-[11px] px-2 py-0.5 rounded-md ${getStatusClass(o.final_status)}">
+            ${o.final_status || "PENDING"}
+          </span>
+        </td>
+        <td class="py-3 px-4 text-center" onclick="event.stopPropagation()">
+          <button onclick="openOrderModal('${o.order_id}')" class="px-2.5 py-1 text-xs font-semibold ${hasWhatsApp ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'} rounded-lg transition inline-flex items-center gap-1 shadow-sm">
+            ${hasWhatsApp ? '<i data-lucide="message-square" class="w-3 h-3"></i><span>WhatsApp</span>' : '<span>Inspect</span>'}
+          </button>
         </td>
       </tr>
     `;
   });
+
+  if (window.lucide) lucide.createIcons();
 }
 
+function getStatusClass(status) {
+  if (!status) return "bg-slate-100 text-slate-600";
+  if (status.includes("CONFIRM") || status.includes("APPROVED") || status.includes("DELIVERED") || status.includes("PREPAID")) {
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+  }
+  if (status.includes("PENDING")) {
+    return "bg-amber-50 text-amber-700 border border-amber-200";
+  }
+  return "bg-rose-50 text-rose-700 border border-rose-200";
+}
+
+function filterCreatedOrdersTable() {
+  const query = document.getElementById("created-order-search").value.toLowerCase().trim();
+  const filtered = createdOrders.filter((o) => {
+    return (
+      !query ||
+      (o.customer_name && o.customer_name.toLowerCase().includes(query)) ||
+      (o.order_id && o.order_id.toLowerCase().includes(query)) ||
+      (o.city && o.city.toLowerCase().includes(query))
+    );
+  });
+  renderCreatedOrdersTable(filtered);
+}
+
+// ----------------- ORDER DETAILS & EMBEDDED WHATSAPP MODAL -----------------
 async function openOrderModal(orderId) {
   try {
     const res = await fetch(`/api/orders/${orderId}`);
-    if (!res.ok) throw new Error("Could not fetch order details");
+    if (!res.ok) throw new Error("Could not fetch order details from database");
     const o = await res.json();
+    currentModalOrder = o;
 
     document.getElementById("modal-order-id").innerText = `#${o.order_id}`;
+    document.getElementById("modal-order-sub").innerText = `Placed on ${o.order_datetime || "Today"} • Payment: COD`;
     document.getElementById("modal-customer").innerText = o.customer_name || "N/A";
     document.getElementById("modal-phone").innerText = o.phone || "N/A";
     document.getElementById("modal-location").innerText = `${o.city || ""}, ${o.state || ""} (${o.pincode || ""})`;
     document.getElementById("modal-value").innerText = `₹${o.order_value || 0}`;
     document.getElementById("modal-address").innerText = o.address || "N/A";
     document.getElementById("modal-score").innerText = `${o.risk_score ?? "---"}/100`;
-    document.getElementById("modal-status").innerText = o.final_status || "PENDING";
+
+    const statusBadge = document.getElementById("modal-status-badge");
+    statusBadge.innerText = o.final_status || "PENDING";
+    statusBadge.className = `px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusClass(o.final_status)}`;
+
     document.getElementById("modal-reason").innerText = o.reason || "No explanation recorded.";
 
+    // Score bar
+    const bar = document.getElementById("modal-score-bar");
+    const scoreVal = o.risk_score || 0;
+    bar.style.width = `${Math.min(100, Math.max(5, scoreVal))}%`;
+
+    // Decision badge
     const badge = document.getElementById("modal-decision-badge");
-    badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase mt-1 inline-block";
+    badge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border";
     if (o.decision === "ship") {
-      badge.classList.add("bg-emerald-100", "text-emerald-800");
+      badge.classList.add("bg-emerald-100", "text-emerald-800", "border-emerald-300");
       badge.innerText = "SHIP AS-IS";
+      bar.className = "h-full bg-emerald-500";
     } else if (o.decision === "confirm") {
-      badge.classList.add("bg-amber-100", "text-amber-800");
+      badge.classList.add("bg-amber-100", "text-amber-800", "border-amber-300");
       badge.innerText = "WHATSAPP CONFIRM";
+      bar.className = "h-full bg-amber-500";
     } else if (o.decision === "nudge_prepaid") {
-      badge.classList.add("bg-orange-100", "text-orange-800");
+      badge.classList.add("bg-orange-100", "text-orange-800", "border-orange-300");
       badge.innerText = "NUDGE TO PREPAID";
+      bar.className = "h-full bg-orange-500";
     } else {
-      badge.classList.add("bg-rose-100", "text-rose-800");
+      badge.classList.add("bg-rose-100", "text-rose-800", "border-rose-300");
       badge.innerText = "HOLD / CANCEL";
+      bar.className = "h-full bg-rose-500";
     }
 
-    const actionBox = document.getElementById("modal-action-box");
-    actionBox.innerHTML = "";
+    // Factors badges
+    const factorsContainer = document.getElementById("modal-factors");
+    factorsContainer.innerHTML = "";
+    const f = o.risk_factors || {};
+    if (f.first_time_buyer) {
+      factorsContainer.innerHTML += `<span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-medium">First-Time Buyer</span>`;
+    }
+    if (f.prior_orders > 0) {
+      factorsContainer.innerHTML += `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-medium">History: ${f.prior_orders} orders (${f.prior_rto} RTOs)</span>`;
+    }
+    if (f.short_or_incomplete_address) {
+      factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-medium">Incomplete Address (+${f.address_risk_score} pts)</span>`;
+    }
+    if (f.first_order_protected) {
+      factorsContainer.innerHTML += `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded font-semibold">Protected First-Time Buyer</span>`;
+    }
+    if (f.pincode_rto_rate !== null && f.pincode_rto_rate !== undefined) {
+      factorsContainer.innerHTML += `<span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Pincode RTO: ${f.pincode_rto_rate}%</span>`;
+    }
+    if (o.llm_used) {
+      factorsContainer.innerHTML += `<span class="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded font-medium">🤖 LLM Analyzed</span>`;
+    }
+
+    // Contextual Right Column Switching
+    const waContainer = document.getElementById("modal-whatsapp-container");
+    const shipContainer = document.getElementById("modal-ship-container");
+    const cancelContainer = document.getElementById("modal-cancel-container");
 
     if (o.decision === "confirm" || o.decision === "nudge_prepaid") {
-      const mode = o.decision === "confirm" ? "confirmation" : "nudge_prepaid";
-      actionBox.innerHTML += `
-        <button onclick="closeOrderModal(); launchSimulatorWithOrder('${o.customer_name}', '${o.order_id}', ${o.order_value}, '${mode}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2 mb-2">
-          <i data-lucide="message-square" class="w-4 h-4"></i>
-          <span>Open in WhatsApp Simulator & Test Live Replies</span>
-        </button>
-      `;
-    }
+      waContainer.classList.remove("hidden");
+      shipContainer.classList.add("hidden");
+      cancelContainer.classList.add("hidden");
 
-    actionBox.innerHTML += `
-      <button onclick="closeOrderModal(); populateEvaluatorFromRow('${o.order_id}')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2">
-        <i data-lucide="edit" class="w-4 h-4"></i>
-        <span>Load into Evaluator Tab</span>
-      </button>
-    `;
+      currentModalFlow = o.decision === "nudge_prepaid" ? "nudge_prepaid" : "confirmation";
+      initModalWhatsAppChat(o);
+    } else if (o.decision === "ship") {
+      waContainer.classList.add("hidden");
+      shipContainer.classList.remove("hidden");
+      cancelContainer.classList.add("hidden");
+    } else {
+      waContainer.classList.add("hidden");
+      shipContainer.classList.add("hidden");
+      cancelContainer.classList.remove("hidden");
+    }
 
     document.getElementById("order-modal").classList.remove("hidden");
     if (window.lucide) lucide.createIcons();
@@ -650,6 +470,331 @@ async function openOrderModal(orderId) {
 
 function closeOrderModal() {
   document.getElementById("order-modal").classList.add("hidden");
+  currentModalOrder = null;
+}
+
+// ----------------- MODAL WHATSAPP SIMULATOR ENGINE -----------------
+async function initModalWhatsAppChat(order) {
+  const chat = document.getElementById("modal-chat-messages");
+  chat.innerHTML = "";
+
+  const stateBadge = document.getElementById("modal-wa-state-badge");
+  stateBadge.innerText = "INITIALIZING...";
+  stateBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600";
+
+  try {
+    const res = await fetch("/api/whatsapp/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: order.customer_name || "Customer",
+        order_id: order.order_id,
+        order_value: order.order_value,
+        flow_type: currentModalFlow,
+        action: "init",
+      }),
+    });
+
+    if (!res.ok) throw new Error("Could not initialize message");
+    const data = await res.json();
+
+    appendModalBotMessage(data.message.replace(/\n/g, "<br>"));
+    stateBadge.innerText = data.status || "AWAITING_REPLY";
+    stateBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800";
+  } catch (err) {
+    appendModalBotMessage(`⚠️ Error: ${err.message}`);
+    stateBadge.innerText = "ERROR";
+  }
+}
+
+async function sendModalSimReply(replyText) {
+  if (!currentModalOrder) return;
+  appendModalUserMessage(replyText);
+
+  const stateBadge = document.getElementById("modal-wa-state-badge");
+  stateBadge.innerText = "PROCESSING...";
+  stateBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800";
+
+  try {
+    const res = await fetch("/api/whatsapp/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: currentModalOrder.customer_name || "Customer",
+        order_id: currentModalOrder.order_id,
+        order_value: currentModalOrder.order_value,
+        flow_type: currentModalFlow,
+        action: "reply",
+        reply_text: replyText,
+      }),
+    });
+
+    if (!res.ok) throw new Error("Failed to process reply");
+    const data = await res.json();
+
+    appendModalBotMessage(data.response_message.replace(/\n/g, "<br>"));
+
+    let pillStyle = "bg-slate-100 text-slate-700";
+    let statusText = data.status;
+
+    if (data.status === "CONFIRMED") {
+      pillStyle = "bg-emerald-100 text-emerald-800";
+      statusText = "CONFIRMED";
+    } else if (data.status === "CUSTOMER_CANCELLED" || data.status === "REJECTED") {
+      pillStyle = "bg-rose-100 text-rose-800";
+      statusText = "CUSTOMER_CANCELLED";
+    } else if (data.status === "CONVERTED_PREPAID") {
+      pillStyle = "bg-indigo-100 text-indigo-800";
+      statusText = "CONVERTED_PREPAID";
+    }
+
+    stateBadge.innerText = statusText;
+    stateBadge.className = `text-[10px] font-bold px-2 py-0.5 rounded-full ${pillStyle}`;
+
+    const modalStatus = document.getElementById("modal-status-badge");
+    modalStatus.innerText = statusText;
+    modalStatus.className = `px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusClass(statusText)}`;
+
+    // Refresh created orders table & founder dashboard in background
+    loadCreatedOrdersFromDB();
+    loadDashboardMetricsFromDB();
+  } catch (err) {
+    appendModalBotMessage(`⚠️ Error: ${err.message}`);
+    stateBadge.innerText = "ERROR";
+  }
+}
+
+async function triggerModalTimeout() {
+  if (!currentModalOrder) return;
+  appendModalUserMessage("<i>[No reply from customer for 24 hours]</i>");
+
+  const stateBadge = document.getElementById("modal-wa-state-badge");
+  stateBadge.innerText = "PROCESSING...";
+
+  try {
+    const res = await fetch("/api/whatsapp/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: currentModalOrder.customer_name || "Customer",
+        order_id: currentModalOrder.order_id,
+        order_value: currentModalOrder.order_value,
+        flow_type: currentModalFlow,
+        action: "timeout",
+      }),
+    });
+
+    const data = await res.json();
+    appendModalBotMessage(data.response_message.replace(/\n/g, "<br>"));
+
+    stateBadge.innerText = "AUTO_EXPIRED_24H";
+    stateBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800";
+
+    const modalStatus = document.getElementById("modal-status-badge");
+    modalStatus.innerText = "AUTO_EXPIRED_24H";
+    modalStatus.className = `px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusClass("AUTO_EXPIRED_24H")}`;
+
+    loadCreatedOrdersFromDB();
+    loadDashboardMetricsFromDB();
+  } catch (err) {
+    appendModalBotMessage(`⚠️ Error: ${err.message}`);
+  }
+}
+
+function sendModalCustomReply() {
+  const input = document.getElementById("modal-chat-input");
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = "";
+  sendModalSimReply(val);
+}
+
+function appendModalBotMessage(html) {
+  const chat = document.getElementById("modal-chat-messages");
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  chat.innerHTML += `
+    <div class="chat-msg chat-msg-bot">
+      ${html}
+      <div class="chat-msg-time text-slate-400 text-right mt-1">${time}</div>
+    </div>
+  `;
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function appendModalUserMessage(html) {
+  const chat = document.getElementById("modal-chat-messages");
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  chat.innerHTML += `
+    <div class="chat-msg chat-msg-user">
+      ${html}
+      <div class="chat-msg-time text-slate-500 text-right mt-1">${time} ✓✓</div>
+    </div>
+  `;
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// ----------------- FOUNDER DASHBOARD METRICS -----------------
+async function loadDashboardMetrics() {
+  await loadDashboardMetricsFromDB();
+}
+
+async function loadDashboardMetricsFromDB() {
+  const errorBanner = document.getElementById("dash-error");
+  try {
+    const res = await fetch("/api/backtest");
+    if (!res.ok) throw new Error("Could not fetch metrics from backtest engine");
+    const data = await res.json();
+
+    errorBanner.classList.add("hidden");
+
+    // 4 Decision Buckets
+    const counts = data.decisions_count || {};
+    const total = data.total_evaluated || 1;
+
+    document.getElementById("dash-count-ship").innerText = counts.ship || 0;
+    document.getElementById("dash-pct-ship").innerText = `${((counts.ship || 0) / total * 100).toFixed(1)}% of total orders`;
+
+    document.getElementById("dash-count-confirm").innerText = counts.confirm || 0;
+    document.getElementById("dash-pct-confirm").innerText = `${((counts.confirm || 0) / total * 100).toFixed(1)}% of total orders`;
+
+    document.getElementById("dash-count-nudge").innerText = counts.nudge_prepaid || 0;
+    document.getElementById("dash-pct-nudge").innerText = `${((counts.nudge_prepaid || 0) / total * 100).toFixed(1)}% of total orders`;
+
+    document.getElementById("dash-count-cancel").innerText = counts.cancel || 0;
+    document.getElementById("dash-pct-cancel").innerText = `${((counts.cancel || 0) / total * 100).toFixed(1)}% of total orders`;
+
+    // Financial Impacts
+    const fin = data.financials || {};
+    document.getElementById("dash-saved").innerText = `+₹${Math.round(fin.avoided_rto_savings || 0).toLocaleString()}`;
+    document.getElementById("dash-saved-sub").innerText = `${data.outcomes?.avoided_rtos || 0} serial returns stopped`;
+
+    document.getElementById("dash-lost").innerText = `-₹${Math.round(fin.false_cancel_margin_loss || 0).toLocaleString()}`;
+    document.getElementById("dash-lost-sub").innerText = `${data.outcomes?.false_cancellations || 0} genuine buyers cancelled`;
+
+    document.getElementById("dash-nudge-gain").innerText = `+₹${Math.round(fin.prepaid_conversion_savings || 0).toLocaleString()}`;
+    document.getElementById("dash-nudge-sub").innerText = `${data.outcomes?.prepaid_conversions || 0} orders converted to prepaid`;
+
+    const net = Math.round(fin.net_financial_impact || 0);
+    document.getElementById("dash-net-impact").innerText = `${net >= 0 ? "+" : ""}₹${net.toLocaleString()}`;
+  } catch (err) {
+    errorBanner.classList.remove("hidden");
+    errorBanner.innerText = `⚠️ Failed to load metrics: ${err.message}. Ensure database is seeded.`;
+  }
+}
+
+// ----------------- RULES & THRESHOLDS -----------------
+async function loadRulesFromDB() {
+  const container = document.getElementById("rules-container");
+  try {
+    const res = await fetch("/api/rules");
+    if (!res.ok) throw new Error("Could not load rules");
+    allRules = await res.json();
+
+    container.innerHTML = "";
+    allRules.forEach((r) => {
+      container.innerHTML += `
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-start justify-between">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">${r.category || 'General'}</span>
+              <h4 class="font-mono text-sm font-bold text-slate-800">${r.key}</h4>
+            </div>
+            <span class="bg-emerald-50 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded border border-emerald-200">
+              ${r.value}
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 leading-relaxed">${r.description || ""}</p>
+          <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+            <input type="number" id="inp-rule-${r.key}" value="${r.value}" step="any" class="w-28 text-xs font-mono border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+            <button onclick="saveSingleRule('${r.key}')" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition">
+              Update
+            </button>
+          </div>
+        </div>
+      `;
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="p-6 text-rose-500 text-xs">⚠️ Failed to load rules: ${err.message}</div>`;
+  }
+}
+
+async function saveSingleRule(ruleKey) {
+  const val = parseFloat(document.getElementById(`inp-rule-${ruleKey}`).value);
+  try {
+    const res = await fetch(`/api/rules/${ruleKey}?new_value=${val}`, { method: "PUT" });
+    if (!res.ok) throw new Error("Failed to update rule");
+    alert(`✅ Rule '${ruleKey}' updated to ${val} in database!`);
+    loadRulesFromDB();
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  }
+}
+
+async function saveAllRules() {
+  for (const r of allRules) {
+    const el = document.getElementById(`inp-rule-${r.key}`);
+    if (el) {
+      const val = parseFloat(el.value);
+      if (val !== r.value) {
+        await fetch(`/api/rules/${r.key}?new_value=${val}`, { method: "PUT" });
+      }
+    }
+  }
+  alert("✅ All modified rules saved to database!");
+  loadRulesFromDB();
+}
+
+// ----------------- HISTORICAL DATABASE EXPLORER -----------------
+async function loadOrdersFromDB() {
+  try {
+    const res = await fetch("/api/orders?limit=200");
+    if (!res.ok) throw new Error("Could not load orders");
+    allOrders = await res.json();
+    renderOrdersTable(allOrders);
+  } catch (err) {
+    const tbody = document.getElementById("orders-tbody");
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-rose-500">Failed to load orders: ${err.message}</td></tr>`;
+    }
+  }
+}
+
+function renderOrdersTable(orders) {
+  const tbody = document.getElementById("orders-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  if (orders.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">No matching orders found in database</td></tr>`;
+    return;
+  }
+
+  orders.slice(0, 100).forEach((o) => {
+    let badgeClass = "bg-slate-100 text-slate-700";
+    if (o.decision === "ship") badgeClass = "bg-emerald-100 text-emerald-800";
+    if (o.decision === "confirm") badgeClass = "bg-amber-100 text-amber-800";
+    if (o.decision === "nudge_prepaid") badgeClass = "bg-orange-100 text-orange-800";
+    if (o.decision === "cancel") badgeClass = "bg-rose-100 text-rose-800";
+
+    tbody.innerHTML += `
+      <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openOrderModal('${o.order_id}')">
+        <td class="py-2.5 px-4 font-mono font-bold text-emerald-700 hover:underline">#${o.order_id}</td>
+        <td class="py-2.5 px-4 font-medium">${o.customer_name || "N/A"}</td>
+        <td class="py-2.5 px-4 text-slate-500">${o.city || ""}, ${o.pincode || ""}</td>
+        <td class="py-2.5 px-4 font-semibold">₹${o.order_value || 0}</td>
+        <td class="py-2.5 px-4 font-bold">${o.risk_score !== null ? o.risk_score : "---"}</td>
+        <td class="py-2.5 px-4">
+          <span class="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${badgeClass}">
+            ${o.decision || "PENDING"}
+          </span>
+        </td>
+        <td class="py-2.5 px-4 text-slate-600 max-w-xs truncate text-[11px]">${o.reason || "Awaiting evaluation"}</td>
+        <td class="py-2.5 px-4 font-bold ${o.final_status === 'DELIVERED' || o.final_status === 'CONFIRMED' ? 'text-emerald-600' : 'text-rose-600'}">
+          ${o.final_status || "PENDING"}
+        </td>
+      </tr>
+    `;
+  });
 }
 
 function filterOrdersTable() {
@@ -668,23 +813,4 @@ function filterOrdersTable() {
   });
 
   renderOrdersTable(filtered);
-}
-
-function populateEvaluatorFromRow(orderId) {
-  const found = allOrders.find((o) => o.order_id === orderId);
-  if (!found) return;
-
-  document.getElementById("inp-order-id").value = found.order_id || "";
-  document.getElementById("inp-order-value").value = found.order_value || 0;
-  document.getElementById("inp-customer-name").value = found.customer_name || "";
-  document.getElementById("inp-phone").value = found.phone || "";
-  document.getElementById("inp-address").value = found.address || "";
-  document.getElementById("inp-city").value = found.city || "";
-  document.getElementById("inp-state").value = found.state || "";
-  document.getElementById("inp-pincode").value = found.pincode || "";
-  document.getElementById("inp-prior-orders").value = found.customer_prior_orders ?? 0;
-  document.getElementById("inp-prior-rto").value = found.customer_prior_rto ?? 0;
-
-  switchTab("evaluator");
-  document.getElementById("order-form").dispatchEvent(new Event("submit"));
 }
