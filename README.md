@@ -79,21 +79,26 @@ python scripts/run_engine.py
 
 This processes all COD orders through the risk engine and stores decisions.
 
-### Step 7: Launch the Dashboard
-
-```bash
-streamlit run dashboard/app.py
-```
-
-Opens at **http://localhost:8501** — the founder's daily dashboard.
-
-### Step 8 (Optional): Run the API Server
+### Step 7: Launch the Web Application (Interactive UI & Simulator)
 
 ```bash
 uvicorn src.api.main:app --reload
 ```
 
-Opens at **http://localhost:8000/docs** — interactive API documentation.
+Opens immediately at **http://localhost:8000** (no Swagger needed!) with:
+- ⚡ **Live Order Decision & Action Center**: Test and evaluate any COD order with 1-click presets (Loyal Safe Buyer, First-Time Buyer with Hinglish directions, Incomplete "xyz" Address, Serial RTO Offender) and execute automated operational workflows.
+- 📱 **Interactive WhatsApp Phone Simulator**: Live mobile phone screen with simulated customer replies ("YES", "NO", Hinglish "Haan bhej do", random question, 24-hr timeout) and mathematical discount justification.
+- 📊 **Founder Morning Executive Brief**: 4 decision buckets, avoided RTO savings, cancellation costs, and net ₹ profit preserved.
+- ⚙️ **Rules & Thresholds Manager**: Adjust risk boundaries and discounts live in the database without code modifications.
+- 📦 **Order Database Explorer**: Filter by decision bucket and search across all 1,988 historical orders.
+
+### Step 8 (Alternative): Launch the Streamlit Analytics Dashboard
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Opens at **http://localhost:8501** for an alternative analytical dashboard view.
 
 ---
 
@@ -104,6 +109,11 @@ assignment-oytra/
 ├── orders_sample.csv            # 2,018 historical COD orders
 ├── requirements.txt             # Python dependencies
 ├── .env.example                 # Environment variables template
+│
+├── frontend/                    # Modern Interactive Web UI (Single Page Application)
+│   ├── index.html               # Main application layout with tabs, cards & mobile frame
+│   ├── css/style.css            # WhatsApp phone mockup, chat bubbles & custom styling
+│   └── js/app.js                # Interactive controllers & API integration
 │
 ├── scripts/
 │   ├── setup_db.py              # One-command DB setup + CSV import

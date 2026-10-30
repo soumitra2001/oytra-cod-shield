@@ -1,6 +1,9 @@
 """FastAPI backend — decision engine API endpoints."""
 
+import os
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,6 +25,15 @@ app = FastAPI(
     description="AI-powered system to evaluate COD orders before shipping",
     version="1.0.0",
 )
+
+frontend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+if os.path.exists(frontend_dir):
+    css_dir = os.path.join(frontend_dir, "css")
+    js_dir = os.path.join(frontend_dir, "js")
+    if os.path.exists(css_dir):
+        app.mount("/css", StaticFiles(directory=css_dir), name="css")
+    if os.path.exists(js_dir):
+        app.mount("/js", StaticFiles(directory=js_dir), name="js")
 
 
 # ---------- Pydantic Models ----------
@@ -73,7 +85,50 @@ def _get_pincode_stats(pincode: str) -> dict | None:
 
 @app.get("/")
 def root():
+    index_file = os.path.join(frontend_dir, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
     return {"message": "Oytra COD RTO Decision Engine", "docs": "/docs"}
+
+
+@app.get("/api/orders")
+def get_orders(limit: int = 100, decision: str | None = None):
+    """Retrieve orders with decisions for the frontend explorer."""
+    with db_engine.connect() as conn:
+        q = """
+            SELECT o.order_id, o.customer_name, o.phone, o.address, o.city, o.state, o.pincode,
+                   o.order_value, o.customer_prior_orders, o.customer_prior_rto, o.final_status,
+                   od.decision, od.risk_score, od.reason
+            FROM orders o
+            LEFT JOIN order_decisions od ON o.order_id = od.order_id
+        """
+        params = {}
+        if decision:
+            q += " WHERE od.decision = :dec"
+            params["dec"] = decision
+        q += " ORDER BY o.order_datetime DESC LIMIT :lim"
+        params["lim"] = limit
+
+        rows = conn.execute(text(q), params).fetchall()
+        return [
+            {
+                "order_id": r[0],
+                "customer_name": r[1],
+                "phone": r[2],
+                "address": r[3],
+                "city": r[4],
+                "state": r[5],
+                "pincode": r[6],
+                "order_value": float(r[7] or 0),
+                "customer_prior_orders": r[8],
+                "customer_prior_rto": r[9],
+                "final_status": r[10],
+                "decision": r[11],
+                "risk_score": float(r[12]) if r[12] is not None else None,
+                "reason": r[13],
+            }
+            for r in rows
+        ]
 
 
 @app.post("/api/evaluate")
