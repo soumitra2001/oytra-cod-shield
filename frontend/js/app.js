@@ -569,8 +569,8 @@ function renderOrdersTable(orders) {
     if (o.decision === "cancel") badgeClass = "bg-rose-100 text-rose-800";
 
     tbody.innerHTML += `
-      <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="populateEvaluatorFromRow('${o.order_id}')">
-        <td class="py-2.5 px-4 font-mono font-bold">${o.order_id}</td>
+      <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openOrderModal('${o.order_id}')">
+        <td class="py-2.5 px-4 font-mono font-bold text-emerald-700 hover:underline">${o.order_id}</td>
         <td class="py-2.5 px-4 font-medium">${o.customer_name || "N/A"}</td>
         <td class="py-2.5 px-4 text-slate-500">${o.city || ""}, ${o.pincode || ""}</td>
         <td class="py-2.5 px-4 font-semibold">₹${o.order_value || 0}</td>
@@ -581,12 +581,75 @@ function renderOrdersTable(orders) {
           </span>
         </td>
         <td class="py-2.5 px-4 text-slate-600 max-w-xs truncate">${o.reason || "Awaiting evaluation"}</td>
-        <td class="py-2.5 px-4 font-bold ${o.final_status === 'DELIVERED' ? 'text-emerald-600' : 'text-rose-600'}">
+        <td class="py-2.5 px-4 font-bold ${o.final_status === 'DELIVERED' || o.final_status === 'CONFIRMED' ? 'text-emerald-600' : 'text-rose-600'}">
           ${o.final_status || "PENDING"}
         </td>
       </tr>
     `;
   });
+}
+
+async function openOrderModal(orderId) {
+  try {
+    const res = await fetch(`/api/orders/${orderId}`);
+    if (!res.ok) throw new Error("Could not fetch order details");
+    const o = await res.json();
+
+    document.getElementById("modal-order-id").innerText = `#${o.order_id}`;
+    document.getElementById("modal-customer").innerText = o.customer_name || "N/A";
+    document.getElementById("modal-phone").innerText = o.phone || "N/A";
+    document.getElementById("modal-location").innerText = `${o.city || ""}, ${o.state || ""} (${o.pincode || ""})`;
+    document.getElementById("modal-value").innerText = `₹${o.order_value || 0}`;
+    document.getElementById("modal-address").innerText = o.address || "N/A";
+    document.getElementById("modal-score").innerText = `${o.risk_score ?? "---"}/100`;
+    document.getElementById("modal-status").innerText = o.final_status || "PENDING";
+    document.getElementById("modal-reason").innerText = o.reason || "No explanation recorded.";
+
+    const badge = document.getElementById("modal-decision-badge");
+    badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase mt-1 inline-block";
+    if (o.decision === "ship") {
+      badge.classList.add("bg-emerald-100", "text-emerald-800");
+      badge.innerText = "SHIP AS-IS";
+    } else if (o.decision === "confirm") {
+      badge.classList.add("bg-amber-100", "text-amber-800");
+      badge.innerText = "WHATSAPP CONFIRM";
+    } else if (o.decision === "nudge_prepaid") {
+      badge.classList.add("bg-orange-100", "text-orange-800");
+      badge.innerText = "NUDGE TO PREPAID";
+    } else {
+      badge.classList.add("bg-rose-100", "text-rose-800");
+      badge.innerText = "HOLD / CANCEL";
+    }
+
+    const actionBox = document.getElementById("modal-action-box");
+    actionBox.innerHTML = "";
+
+    if (o.decision === "confirm" || o.decision === "nudge_prepaid") {
+      const mode = o.decision === "confirm" ? "confirmation" : "nudge_prepaid";
+      actionBox.innerHTML += `
+        <button onclick="closeOrderModal(); launchSimulatorWithOrder('${o.customer_name}', '${o.order_id}', ${o.order_value}, '${mode}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2 mb-2">
+          <i data-lucide="message-square" class="w-4 h-4"></i>
+          <span>Open in WhatsApp Simulator & Test Live Replies</span>
+        </button>
+      `;
+    }
+
+    actionBox.innerHTML += `
+      <button onclick="closeOrderModal(); populateEvaluatorFromRow('${o.order_id}')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2">
+        <i data-lucide="edit" class="w-4 h-4"></i>
+        <span>Load into Evaluator Tab</span>
+      </button>
+    `;
+
+    document.getElementById("order-modal").classList.remove("hidden");
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    alert("Error loading order: " + err.message);
+  }
+}
+
+function closeOrderModal() {
+  document.getElementById("order-modal").classList.add("hidden");
 }
 
 function filterOrdersTable() {

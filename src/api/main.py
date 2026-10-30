@@ -245,8 +245,19 @@ def simulate_whatsapp(req: WhatsAppSimulateRequest):
     elif req.action == "reply":
         reply = req.reply_text or ""
         result = handle_reply(reply, req.flow_type)
+        new_status = result["new_status"].upper()
+
+        if req.order_id:
+            with db_engine.begin() as conn:
+                if result["action"] == "confirm_order":
+                    conn.execute(text("UPDATE orders SET final_status = 'CONFIRMED' WHERE order_id = :oid"), {"oid": req.order_id})
+                elif result["action"] == "cancel_order":
+                    conn.execute(text("UPDATE orders SET final_status = 'CUSTOMER_CANCELLED' WHERE order_id = :oid"), {"oid": req.order_id})
+                elif result["action"] == "send_payment_link":
+                    conn.execute(text("UPDATE orders SET final_status = 'CONVERTED_PREPAID', payment_method = 'PREPAID' WHERE order_id = :oid"), {"oid": req.order_id})
+
         return {
-            "status": result["new_status"].upper(),
+            "status": new_status,
             "action": result["action"],
             "response_message": result["response_message"],
         }
@@ -254,6 +265,9 @@ def simulate_whatsapp(req: WhatsAppSimulateRequest):
     elif req.action == "timeout":
         timeout_action = int(rules.get("timeout_action", 1))
         result = handle_timeout(req.flow_type, timeout_action)
+        if req.order_id:
+            with db_engine.begin() as conn:
+                conn.execute(text("UPDATE orders SET final_status = 'AUTO_EXPIRED_24H' WHERE order_id = :oid"), {"oid": req.order_id})
         return {
             "status": "AUTO_EXPIRED_24H",
             "action": result["action"],
@@ -265,18 +279,126 @@ def simulate_whatsapp(req: WhatsAppSimulateRequest):
 
 @app.post("/api/evaluate")
 def evaluate_order(order: OrderInput):
-    """Evaluate a single COD order and return the decision."""
+    """
+    Evaluate a COD order using historical learned patterns + LLM,
+    and persist the order and decision to the database.
+    """
+    import json
     rules = _load_rules()
     pincode_stats = _get_pincode_stats(order.pincode)
 
     order_dict = order.model_dump()
 
-    # LLM analysis (only if API key is set)
+    # LLM analysis for address/name quality
     llm_result = analyze_order_with_llm(order_dict)
 
     decision = make_decision(order_dict, pincode_stats, rules, llm_result)
 
-    # Generate WhatsApp message if needed
+    # Determine status
+    if decision["decision"] == "ship":
+        initial_status = "APPROVED_FOR_SHIPPING"
+    elif decision["decision"] == "confirm":
+        initial_status = "PENDING_CONFIRMATION"
+    elif decision["decision"] == "nudge_prepaid":
+        initial_status = "PENDING_PREPAID_NUDGE"
+    else:
+        initial_status = "HELD_RISK_CANCELLED"
+
+    # Save to database
+    with db_engine.begin() as conn:
+        now_sql = "NOW()" if IS_POSTGRES else "CURRENT_TIMESTAMP"
+        conn.execute(text(f"""
+            INSERT INTO orders (
+                order_id, order_datetime, customer_name, phone, address,
+                city, state, pincode, order_value, items, num_items,
+                customer_prior_orders, customer_prior_rto, utm_source,
+                courier, payment_method, final_status
+            ) VALUES (
+                :order_id, {now_sql}, :customer_name, :phone, :address,
+                :city, :state, :pincode, :order_value, 'Oytra Haircare Set', 1,
+                :customer_prior_orders, :customer_prior_rto, 'direct',
+                'Delhivery', 'COD', :final_status
+            )
+            ON CONFLICT (order_id) DO UPDATE SET
+                customer_name = EXCLUDED.customer_name,
+                phone = EXCLUDED.phone,
+                address = EXCLUDED.address,
+                city = EXCLUDED.city,
+                state = EXCLUDED.state,
+                pincode = EXCLUDED.pincode,
+                order_value = EXCLUDED.order_value,
+                customer_prior_orders = EXCLUDED.customer_prior_orders,
+                customer_prior_rto = EXCLUDED.customer_prior_rto,
+                final_status = EXCLUDED.final_status
+        """), {
+            **order_dict,
+            "final_status": initial_status,
+        })
+
+        if IS_POSTGRES:
+            conn.execute(text("""
+                INSERT INTO order_decisions (
+                    order_id, decision, risk_score, risk_category, reason,
+                    risk_factors, llm_used, llm_analysis, actual_status
+                ) VALUES (
+                    :order_id, :decision, :risk_score, :risk_category, :reason,
+                    CAST(:risk_factors AS jsonb), :llm_used,
+                    CASE WHEN :llm_analysis IS NOT NULL THEN CAST(:llm_analysis AS jsonb) ELSE NULL END,
+                    :actual_status
+                )
+                ON CONFLICT (order_id) DO UPDATE SET
+                    decision = EXCLUDED.decision,
+                    risk_score = EXCLUDED.risk_score,
+                    risk_category = EXCLUDED.risk_category,
+                    reason = EXCLUDED.reason,
+                    risk_factors = EXCLUDED.risk_factors,
+                    llm_used = EXCLUDED.llm_used,
+                    llm_analysis = EXCLUDED.llm_analysis,
+                    actual_status = EXCLUDED.actual_status,
+                    decided_at = NOW()
+            """), {
+                "order_id": order.order_id,
+                "decision": decision["decision"],
+                "risk_score": decision["risk_score"],
+                "risk_category": decision["risk_category"],
+                "reason": decision["reason"],
+                "risk_factors": json.dumps(decision["risk_factors"]),
+                "llm_used": decision["llm_used"],
+                "llm_analysis": json.dumps(decision["llm_analysis"]) if decision["llm_analysis"] else None,
+                "actual_status": initial_status,
+            })
+        else:
+            conn.execute(text("""
+                INSERT INTO order_decisions (
+                    order_id, decision, risk_score, risk_category, reason,
+                    risk_factors, llm_used, llm_analysis, actual_status
+                ) VALUES (
+                    :order_id, :decision, :risk_score, :risk_category, :reason,
+                    :risk_factors, :llm_used, :llm_analysis, :actual_status
+                )
+                ON CONFLICT (order_id) DO UPDATE SET
+                    decision = EXCLUDED.decision,
+                    risk_score = EXCLUDED.risk_score,
+                    risk_category = EXCLUDED.risk_category,
+                    reason = EXCLUDED.reason,
+                    risk_factors = EXCLUDED.risk_factors,
+                    llm_used = EXCLUDED.llm_used,
+                    llm_analysis = EXCLUDED.llm_analysis,
+                    actual_status = EXCLUDED.actual_status,
+                    decided_at = CURRENT_TIMESTAMP
+            """), {
+                "order_id": order.order_id,
+                "decision": decision["decision"],
+                "risk_score": decision["risk_score"],
+                "risk_category": decision["risk_category"],
+                "reason": decision["reason"],
+                "risk_factors": json.dumps(decision["risk_factors"]),
+                "llm_used": 1 if decision["llm_used"] else 0,
+                "llm_analysis": json.dumps(decision["llm_analysis"]) if decision["llm_analysis"] else None,
+                "actual_status": initial_status,
+            })
+
+    # WhatsApp message payload if applicable
     whatsapp = None
     if decision["decision"] == "confirm":
         whatsapp = create_confirmation_message(order_dict)
@@ -286,9 +408,58 @@ def evaluate_order(order: OrderInput):
 
     return {
         "order_id": order.order_id,
+        "status": initial_status,
         **decision,
         "whatsapp": whatsapp,
     }
+
+
+@app.get("/api/orders/{order_id}")
+def get_order_detail(order_id: str):
+    """Retrieve complete details, decision, and risk breakdown for a single order."""
+    import json
+    with db_engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT o.order_id, o.order_datetime, o.customer_name, o.phone, o.address,
+                   o.city, o.state, o.pincode, o.order_value, o.customer_prior_orders,
+                   o.customer_prior_rto, o.final_status,
+                   od.decision, od.risk_score, od.risk_category, od.reason, od.risk_factors,
+                   od.llm_used, od.llm_analysis
+            FROM orders o
+            LEFT JOIN order_decisions od ON o.order_id = od.order_id
+            WHERE o.order_id = :oid
+        """), {"oid": order_id}).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        risk_factors = row[16]
+        if isinstance(risk_factors, str):
+            try:
+                risk_factors = json.loads(risk_factors)
+            except:
+                pass
+
+        return {
+            "order_id": row[0],
+            "order_datetime": str(row[1]),
+            "customer_name": row[2],
+            "phone": row[3],
+            "address": row[4],
+            "city": row[5],
+            "state": row[6],
+            "pincode": row[7],
+            "order_value": float(row[8] or 0),
+            "customer_prior_orders": row[9],
+            "customer_prior_rto": row[10],
+            "final_status": row[11],
+            "decision": row[12],
+            "risk_score": float(row[13]) if row[13] is not None else None,
+            "risk_category": row[14],
+            "reason": row[15],
+            "risk_factors": risk_factors,
+            "llm_used": bool(row[17]),
+        }
 
 
 @app.post("/api/whatsapp/reply")

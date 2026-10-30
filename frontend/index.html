@@ -66,8 +66,8 @@
     <section id="view-evaluator" class="space-y-6">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 class="text-2xl font-bold text-slate-900">Live Order Decision & Action Center</h2>
-          <p class="text-sm text-slate-600">Simulate evaluating a new COD order received from Shopify before releasing it to shipping.</p>
+          <h2 class="text-2xl font-bold text-slate-900">Create & Evaluate New COD Order</h2>
+          <p class="text-sm text-slate-600">Enter order details. The engine applies learned historical patterns (pincode risk, prior RTO cliff, address quality) + LLM and persists the decision to the database.</p>
         </div>
 
         <!-- 1-Click Test Scenarios (Loaded dynamically from database) -->
@@ -82,38 +82,38 @@
         <div class="lg:col-span-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-              <i data-lucide="package" class="w-4 h-4 text-emerald-600"></i>
-              Incoming Order Details
+              <i data-lucide="package-plus" class="w-4 h-4 text-emerald-600"></i>
+              New Order Input & Persistence
             </h3>
-            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">POST /api/evaluate</span>
+            <span class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-mono">POST /api/evaluate</span>
           </div>
 
           <form id="order-form" onsubmit="handleEvaluate(event)" class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Order ID</label>
-                <input type="text" id="inp-order-id" value="KT101990" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <input type="text" id="inp-order-id" placeholder="KT102001" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Order Value (₹)</label>
-                <input type="number" id="inp-order-value" value="649" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <input type="number" id="inp-order-value" placeholder="649" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Name</label>
-                <input type="text" id="inp-customer-name" value="Ananya Sharma" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <input type="text" id="inp-customer-name" placeholder="Customer Name" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Phone Number</label>
-                <input type="text" id="inp-phone" value="9876543210" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <input type="text" id="inp-phone" placeholder="9876543210" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
             </div>
 
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">Delivery Address</label>
-              <textarea id="inp-address" rows="2" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none">Flat 302, Green Glen Layout, Bellandur, Opp. Central Mall</textarea>
+              <textarea id="inp-address" rows="2" placeholder="Full delivery address or landmark directions" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
             </div>
 
             <div class="grid grid-cols-3 gap-3">
@@ -481,6 +481,59 @@
         </div>
       </div>
     </section>
+
+    <!-- ==================== ORDER DETAILS MODAL ==================== -->
+    <div id="order-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Order Detail</span>
+            <h3 class="text-lg font-bold text-slate-900" id="modal-order-id">ORD-XXXX</h3>
+          </div>
+          <button onclick="closeOrderModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="space-y-3 text-xs text-slate-600">
+          <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div><span class="text-slate-400">Customer:</span> <strong id="modal-customer" class="text-slate-800">---</strong></div>
+            <div><span class="text-slate-400">Phone:</span> <strong id="modal-phone" class="text-slate-800">---</strong></div>
+            <div><span class="text-slate-400">Location:</span> <strong id="modal-location" class="text-slate-800">---</strong></div>
+            <div><span class="text-slate-400">Order Value:</span> <strong id="modal-value" class="text-slate-800">---</strong></div>
+          </div>
+
+          <div>
+            <span class="text-slate-400 block mb-0.5">Delivery Address:</span>
+            <p id="modal-address" class="text-slate-800 bg-slate-50 p-2 rounded-lg border border-slate-200 font-mono text-[11px]">---</p>
+          </div>
+
+          <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div>
+              <span class="text-slate-400 block text-[11px]">Evaluation Decision</span>
+              <span id="modal-decision-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase mt-1 inline-block">---</span>
+            </div>
+            <div class="text-right">
+              <span class="text-slate-400 block text-[11px]">Risk Score</span>
+              <span id="modal-score" class="text-base font-black text-slate-900">---</span>
+            </div>
+            <div class="text-right">
+              <span class="text-slate-400 block text-[11px]">DB Status</span>
+              <span id="modal-status" class="text-xs font-bold text-emerald-700">---</span>
+            </div>
+          </div>
+
+          <div>
+            <span class="text-slate-400 block mb-0.5">Operations Explanation:</span>
+            <p id="modal-reason" class="text-slate-800 bg-amber-50/50 border border-amber-200 p-2.5 rounded-lg leading-relaxed">---</p>
+          </div>
+
+          <div id="modal-action-box" class="pt-2">
+            <!-- Dynamic WhatsApp button or dispatch button -->
+          </div>
+        </div>
+      </div>
+    </div>
 
   </main>
 
