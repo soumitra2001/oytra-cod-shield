@@ -7,24 +7,43 @@ from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
 
-# Database (pre-configured cloud database with automatic local SQLite fallback)
+# Database: defaults to pre-configured Supabase PostgreSQL if not in env or on any DB connection error
 DEFAULT_DB_URL = "postgresql://postgres:Supriya2001G@db.rmtorpqwtepigoxdosgh.supabase.co:5432/postgres"
-DATABASE_URL = os.getenv("DATABASE_URL") or DEFAULT_DB_URL
 
-# Ensure SQLAlchemy uses psycopg2 driver if postgresql:// is provided
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+def get_db_engine():
+    env_db = os.getenv("DATABASE_URL")
+    
+    # 1. Try env DATABASE_URL if explicitly provided
+    if env_db and env_db.strip():
+        candidate_url = env_db.strip()
+        if candidate_url.startswith("postgresql://"):
+            candidate_url = candidate_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        try:
+            eng = create_engine(candidate_url, pool_pre_ping=True)
+            with eng.connect():
+                pass
+            return eng, candidate_url
+        except Exception as e:
+            print(f"⚠️ Warning: Custom DATABASE_URL failed ({e})")
+            print(f"👉 Falling back to default cloud database: {DEFAULT_DB_URL[:35]}...")
 
-try:
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-    with engine.connect() as test_conn:
-        pass
-except Exception as e:
-    print(f"⚠️ Warning: Could not connect to {DATABASE_URL[:30]}... ({e})")
-    print("👉 Falling back to local SQLite database: sqlite:///./orders.db")
-    DATABASE_URL = "sqlite:///./orders.db"
-    engine = create_engine(DATABASE_URL)
+    # 2. Fall back to the default Supabase PostgreSQL database
+    cloud_url = DEFAULT_DB_URL
+    if cloud_url.startswith("postgresql://"):
+        cloud_url = cloud_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
+    try:
+        eng = create_engine(cloud_url, pool_pre_ping=True)
+        with eng.connect():
+            pass
+        return eng, cloud_url
+    except Exception as e:
+        print(f"⚠️ Warning: Could not connect to default cloud database ({e})")
+        print("👉 Falling back to local SQLite database: sqlite:///./orders.db")
+        local_sqlite = "sqlite:///./orders.db"
+        return create_engine(local_sqlite), local_sqlite
+
+engine, DATABASE_URL = get_db_engine()
 IS_POSTGRES = engine.dialect.name == "postgresql"
 SessionLocal = sessionmaker(bind=engine)
 
