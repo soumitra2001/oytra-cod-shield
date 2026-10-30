@@ -63,151 +63,86 @@
   <!-- Main Container -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <!-- ==================== TAB 1: ORDER EVALUATOR ==================== -->
+    <!-- ==================== TAB 1: CREATE ORDER ==================== -->
     <section id="view-evaluator" class="space-y-6">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 class="text-2xl font-bold text-slate-900">Create & Evaluate New COD Order</h2>
-          <p class="text-sm text-slate-600">Enter order details. The engine applies learned historical patterns (pincode risk, prior RTO cliff, address quality) + LLM and persists the decision to the database.</p>
+      <div class="max-w-3xl mx-auto">
+        <div class="mb-6">
+          <h2 class="text-2xl font-bold text-slate-900">Create New COD Order</h2>
+          <p class="text-sm text-slate-600 mt-1">Enter incoming customer and delivery details. The AI decision engine will calculate the RTO risk score using learned historical patterns + LLM verification, assign an action bucket, and add the order to the <strong>Created Orders</strong> tab.</p>
         </div>
 
-        <!-- 1-Click Test Scenarios (Loaded dynamically from database) -->
-        <div id="presets-container" class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database Presets:</span>
-          <span class="text-xs text-slate-400">Loading from DB...</span>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <!-- Input Form -->
-        <div class="lg:col-span-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-5">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-              <i data-lucide="package-plus" class="w-4 h-4 text-emerald-600"></i>
-              New Order Input & Persistence
+              <i data-lucide="package-plus" class="w-5 h-5 text-emerald-600"></i>
+              <span>Order & Customer Information</span>
             </h3>
-            <span class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-mono">POST /api/evaluate</span>
+            <span class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded font-mono font-medium">POST /api/evaluate</span>
           </div>
 
           <form id="order-form" onsubmit="handleEvaluate(event)" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Order ID</label>
-                <input type="text" id="inp-order-id" placeholder="KT102001" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Order ID *</label>
+                <input type="text" id="inp-order-id" placeholder="e.g. KT103001" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Order Value (₹)</label>
-                <input type="number" id="inp-order-value" placeholder="649" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Order Value (₹) *</label>
+                <input type="number" id="inp-order-value" placeholder="e.g. 649" required min="1" step="any" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Name</label>
-                <input type="text" id="inp-customer-name" placeholder="Customer Name" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Customer Full Name *</label>
+                <input type="text" id="inp-customer-name" placeholder="e.g. Deepika Yadav" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Phone Number</label>
-                <input type="text" id="inp-phone" placeholder="9876543210" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Customer Phone Number *</label>
+                <input type="text" id="inp-phone" placeholder="e.g. 9876543210" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Delivery Address</label>
-              <textarea id="inp-address" rows="2" placeholder="Full delivery address or landmark directions" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Delivery Address *</label>
+              <textarea id="inp-address" rows="2" placeholder="e.g. Flat 302, Green Valley Apartments, Near City Hospital" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
             </div>
 
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">City</label>
-                <input type="text" id="inp-city" value="Bangalore" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">City *</label>
+                <input type="text" id="inp-city" placeholder="e.g. Delhi" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">State</label>
-                <input type="text" id="inp-state" value="Karnataka" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">State *</label>
+                <input type="text" id="inp-state" placeholder="e.g. Delhi" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Pincode</label>
-                <input type="text" id="inp-pincode" value="560103" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Pincode *</label>
+                <input type="text" id="inp-pincode" placeholder="e.g. 110001" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Past Delivered Orders</label>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Past Delivered Orders (Customer History)</label>
                 <input type="number" id="inp-prior-orders" value="0" min="0" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <span class="text-[11px] text-slate-400">Leave 0 if first-time customer</span>
               </div>
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">Past RTOs (Returns)</label>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Past RTOs / Returns (Customer History)</label>
                 <input type="number" id="inp-prior-rto" value="0" min="0" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                <span class="text-[11px] text-slate-400">Past failed delivery returns</span>
               </div>
             </div>
 
-            <button type="submit" id="btn-eval" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-2">
-              <i data-lucide="sparkles" class="w-4 h-4"></i>
-              <span>Evaluate Risk & Recommend Action</span>
-            </button>
+            <div class="pt-2">
+              <button type="submit" id="btn-eval" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span>Create & Evaluate Order</span>
+              </button>
+            </div>
           </form>
-        </div>
-
-        <!-- Result & Action Center -->
-        <div class="lg:col-span-6 space-y-6">
-          <div id="eval-placeholder" class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center py-20 flex flex-col items-center justify-center text-slate-400">
-            <i data-lucide="cpu" class="w-12 h-12 mb-3 text-slate-300 stroke-1"></i>
-            <p class="font-medium text-slate-600">No Order Evaluated Yet</p>
-            <p class="text-xs text-slate-400 max-w-sm mt-1">Select a quick preset above or enter details and click "Evaluate Risk" to generate decision and actions.</p>
-          </div>
-
-          <div id="eval-result-card" class="hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-            <!-- Decision Header -->
-            <div class="flex items-start justify-between">
-              <div>
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Recommended Action</span>
-                <div class="flex items-center gap-3 mt-1">
-                  <span id="res-badge" class="px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border">
-                    SHIP AS-IS
-                  </span>
-                  <span id="res-risk-category" class="text-xs text-slate-500 font-medium">Low Risk</span>
-                </div>
-              </div>
-              <div class="text-right">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Composite Risk</span>
-                <div class="text-2xl font-black" id="res-score-num">18/100</div>
-              </div>
-            </div>
-
-            <!-- Risk Progress Bar -->
-            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-              <div id="res-score-bar" class="h-full bg-emerald-500 transition-all duration-500" style="width: 18%"></div>
-            </div>
-
-            <!-- Plain-English Reason Box -->
-            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-500"></i>
-                Operations Explanation (Plain-English)
-              </h4>
-              <p id="res-reason" class="text-sm text-slate-800 leading-relaxed font-normal">
-                Order looks safe. Customer has complete delivery coordinates and no past returns.
-              </p>
-            </div>
-
-            <!-- Risk Factor Tags -->
-            <div>
-              <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Evaluated Factors</h4>
-              <div id="res-factors" class="flex flex-wrap gap-2 text-xs">
-                <!-- Injected via JS -->
-              </div>
-            </div>
-
-            <!-- Contextual Operational Action -->
-            <div class="pt-4 border-t border-slate-100">
-              <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Execute Automated Workflow</h4>
-              <div id="res-actions-container">
-                <!-- Injected via JS -->
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>

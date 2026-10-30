@@ -151,8 +151,7 @@ def get_created_orders():
                    o.order_datetime
             FROM orders o
             JOIN order_decisions od ON o.order_id = od.order_id
-            WHERE o.final_status NOT IN ('DELIVERED', 'RTO')
-               OR o.order_id LIKE 'KT102%' OR o.order_id LIKE 'ORD-%' OR o.order_id LIKE 'TEST_%'
+            WHERE o.utm_source = 'new_order_ui'
             ORDER BY o.id DESC
         """)).fetchall()
         return [
@@ -355,7 +354,7 @@ def evaluate_order(order: OrderInput):
             ) VALUES (
                 :order_id, {now_sql}, :customer_name, :phone, :address,
                 :city, :state, :pincode, :order_value, 'Oytra Haircare Set', 1,
-                :customer_prior_orders, :customer_prior_rto, 'direct',
+                :customer_prior_orders, :customer_prior_rto, 'new_order_ui',
                 'Delhivery', 'COD', :final_status
             )
             ON CONFLICT (order_id) DO UPDATE SET
@@ -368,6 +367,7 @@ def evaluate_order(order: OrderInput):
                 order_value = EXCLUDED.order_value,
                 customer_prior_orders = EXCLUDED.customer_prior_orders,
                 customer_prior_rto = EXCLUDED.customer_prior_rto,
+                utm_source = 'new_order_ui',
                 final_status = EXCLUDED.final_status
         """), {
             **order_dict,

@@ -1,8 +1,7 @@
 // Oytra COD Risk Engine — Dynamic Frontend Controller
 // All data is dynamically retrieved from the database, decision engine, or LLM.
-// No static or hardcoded data is used.
+// No static or demo records are shown.
 
-let dynamicPresets = {};
 let allRules = [];
 let allOrders = [];
 let createdOrders = [];
@@ -14,7 +13,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) {
     lucide.createIcons();
   }
-  loadPresetsFromDB();
   loadRulesFromDB();
   loadDashboardMetricsFromDB();
   loadOrdersFromDB();
@@ -49,60 +47,7 @@ function switchTab(tabName) {
   }
 }
 
-// ----------------- DYNAMIC DATABASE PRESETS -----------------
-async function loadPresetsFromDB() {
-  const container = document.getElementById("presets-container");
-  try {
-    const res = await fetch("/api/presets");
-    if (!res.ok) {
-      throw new Error(`Database returned HTTP ${res.status}: ${res.statusText}`);
-    }
-    dynamicPresets = await res.json();
-
-    container.innerHTML = `<span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database Presets:</span>`;
-    
-    for (const [key, p] of Object.entries(dynamicPresets)) {
-      container.innerHTML += `
-        <button onclick="applyPreset('${key}')" class="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg shadow-sm hover:border-emerald-500 hover:text-emerald-700 transition">
-          ${p.label || key}
-        </button>
-      `;
-    }
-
-    // Auto-load first preset from database
-    const firstKey = Object.keys(dynamicPresets)[0];
-    if (firstKey) {
-      applyPreset(firstKey);
-    }
-  } catch (err) {
-    container.innerHTML = `
-      <span class="text-xs font-semibold text-rose-600">
-        ⚠️ Failed to load presets from database: ${err.message}. Please run 'python scripts/setup_db.py'.
-      </span>
-    `;
-  }
-}
-
-function applyPreset(key) {
-  const p = dynamicPresets[key];
-  if (!p) return;
-
-  document.getElementById("inp-order-id").value = p.order_id || "";
-  document.getElementById("inp-order-value").value = p.order_value || 0;
-  document.getElementById("inp-customer-name").value = p.customer_name || "";
-  document.getElementById("inp-phone").value = p.phone || "";
-  document.getElementById("inp-address").value = p.address || "";
-  document.getElementById("inp-city").value = p.city || "";
-  document.getElementById("inp-state").value = p.state || "";
-  document.getElementById("inp-pincode").value = p.pincode || "";
-  document.getElementById("inp-prior-orders").value = p.prior_orders ?? 0;
-  document.getElementById("inp-prior-rto").value = p.prior_rto ?? 0;
-
-  // Auto trigger live evaluation
-  document.getElementById("order-form").dispatchEvent(new Event("submit"));
-}
-
-// ----------------- ORDER EVALUATION (BACKEND & LLM) -----------------
+// ----------------- ORDER CREATION & EVALUATION -----------------
 async function handleEvaluate(e) {
   e.preventDefault();
 
@@ -121,7 +66,7 @@ async function handleEvaluate(e) {
   };
 
   const btn = document.getElementById("btn-eval");
-  btn.innerHTML = `<span class="animate-spin mr-2">⚙️</span> Evaluating via Engine & Saving to DB...`;
+  btn.innerHTML = `<span class="animate-spin mr-2">⚙️</span> Evaluating Risk via Engine...`;
   btn.disabled = true;
 
   try {
@@ -137,133 +82,28 @@ async function handleEvaluate(e) {
     }
 
     const data = await res.json();
-    renderEvaluationResult(data, payload);
-    loadCreatedOrdersFromDB();
+
+    // Reset form inputs
+    document.getElementById("order-form").reset();
+
+    // Refresh created orders table
+    await loadCreatedOrdersFromDB();
+
+    // Switch directly to the Created Orders tab
+    switchTab("created");
+
+    // Open the order details modal with WhatsApp simulator immediately
+    setTimeout(() => {
+      openOrderModal(data.order_id);
+    }, 200);
+
   } catch (err) {
     alert("❌ Error evaluating order: " + err.message);
   } finally {
-    btn.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 mr-2"></i><span>Evaluate Risk & Recommend Action</span>`;
+    btn.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 mr-2"></i><span>Create & Evaluate Order</span>`;
     btn.disabled = false;
     if (window.lucide) lucide.createIcons();
   }
-}
-
-function renderEvaluationResult(data, orderInput) {
-  document.getElementById("eval-placeholder").classList.add("hidden");
-  const card = document.getElementById("eval-result-card");
-  card.classList.remove("hidden");
-
-  // Composite Risk Score
-  const score = data.risk_score;
-  document.getElementById("res-score-num").innerText = `${score}/100`;
-
-  const bar = document.getElementById("res-score-bar");
-  bar.style.width = `${Math.min(100, Math.max(5, score))}%`;
-
-  // Decision & Category Badges
-  const badge = document.getElementById("res-badge");
-  const catText = document.getElementById("res-risk-category");
-
-  badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border";
-
-  if (data.decision === "ship") {
-    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-emerald-100 text-emerald-800 border-emerald-300";
-    badge.innerText = "SHIP AS-IS";
-    bar.className = "h-full bg-emerald-500 transition-all duration-500";
-    catText.innerText = "Low Risk • Safe to release";
-  } else if (data.decision === "confirm") {
-    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-amber-100 text-amber-800 border-amber-300";
-    badge.innerText = "WHATSAPP CONFIRM";
-    bar.className = "h-full bg-amber-500 transition-all duration-500";
-    catText.innerText = "Medium Risk • Require intent verification";
-  } else if (data.decision === "nudge_prepaid") {
-    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-orange-100 text-orange-800 border-orange-300";
-    badge.innerText = "NUDGE TO PREPAID";
-    bar.className = "h-full bg-orange-500 transition-all duration-500";
-    catText.innerText = "High Risk • Offer discount to pay online";
-  } else {
-    badge.className = "px-3.5 py-1 rounded-full text-sm font-bold uppercase tracking-wide border bg-rose-100 text-rose-800 border-rose-300";
-    badge.innerText = "HOLD / CANCEL";
-    bar.className = "h-full bg-rose-500 transition-all duration-500";
-    catText.innerText = "Severe Risk • Serial RTO / Dummy order";
-  }
-
-  // Plain-English Explanation
-  document.getElementById("res-reason").innerText = data.reason || "No explanation returned.";
-
-  // Dynamic Factors
-  const factorsContainer = document.getElementById("res-factors");
-  factorsContainer.innerHTML = "";
-  const f = data.risk_factors || {};
-
-  if (f.first_time_buyer) {
-    factorsContainer.innerHTML += `<span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-md font-medium">First-Time Buyer</span>`;
-  }
-  if (f.prior_orders > 0) {
-    factorsContainer.innerHTML += `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-md font-medium">History: ${f.prior_orders} orders (${f.prior_rto} RTOs)</span>`;
-  }
-  if (f.short_or_incomplete_address) {
-    factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-1 rounded-md font-medium">Incomplete Address (+${f.address_risk_score} pts)</span>`;
-  }
-  if (f.suspicious_name) {
-    factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-1 rounded-md font-medium">Suspicious Name (+${f.name_risk_score} pts)</span>`;
-  }
-  if (f.first_order_protected) {
-    factorsContainer.innerHTML += `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-md font-semibold">Protected First-Time Buyer (No Auto-Cancel)</span>`;
-  }
-  if (f.pincode_rto_rate !== null && f.pincode_rto_rate !== undefined) {
-    factorsContainer.innerHTML += `<span class="bg-slate-100 text-slate-700 px-2 py-1 rounded-md">Pincode RTO: ${f.pincode_rto_rate}%</span>`;
-  }
-  if (data.llm_used) {
-    factorsContainer.innerHTML += `<span class="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-md font-medium">🤖 Gemini LLM Analyzed</span>`;
-  }
-
-  // Action Buttons
-  const actionsContainer = document.getElementById("res-actions-container");
-  let actionHtml = "";
-  if (data.decision === "confirm" || data.decision === "nudge_prepaid") {
-    actionHtml = `
-      <div class="space-y-2">
-        <button onclick="openOrderModal('${orderInput.order_id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
-          <i data-lucide="message-square" class="w-4 h-4"></i>
-          <span>Open Order Details & WhatsApp Flow (#${orderInput.order_id})</span>
-        </button>
-        <button onclick="switchTab('created')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2 text-xs">
-          <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
-          <span>View in Created Orders Tab</span>
-        </button>
-      </div>
-    `;
-  } else if (data.decision === "ship") {
-    actionHtml = `
-      <div class="space-y-2">
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
-          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
-          <span>Order is low risk — Released directly to courier without customer friction.</span>
-        </div>
-        <button onclick="switchTab('created')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2 text-xs">
-          <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
-          <span>View in Created Orders Tab</span>
-        </button>
-      </div>
-    `;
-  } else {
-    actionHtml = `
-      <div class="space-y-2">
-        <div class="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
-          <i data-lucide="ban" class="w-4 h-4 text-rose-600"></i>
-          <span>High risk serial returner — Held from shipping. ₹169.40 RTO loss saved.</span>
-        </div>
-        <button onclick="switchTab('created')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl transition flex items-center justify-center gap-2 text-xs">
-          <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
-          <span>View in Created Orders Tab</span>
-        </button>
-      </div>
-    `;
-  }
-  actionsContainer.innerHTML = actionHtml;
-
-  if (window.lucide) lucide.createIcons();
 }
 
 // ----------------- CREATED ORDERS TAB -----------------
