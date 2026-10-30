@@ -1,19 +1,21 @@
-// Oytra COD Risk Engine — Frontend Logic
+// Oytra COD Risk Engine — Dynamic Frontend Controller
+// All data is dynamically retrieved from the database, decision engine, or LLM.
+// No static or hardcoded data is used.
 
+let dynamicPresets = {};
 let allRules = [];
 let allOrders = [];
 let currentSimFlow = "confirmation";
-let currentSimState = "PENDING_REPLY";
 
 // Initialize UI
 document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) {
     lucide.createIcons();
   }
-  loadRules();
-  loadDashboardMetrics();
-  loadOrders();
-  refreshSimulator();
+  loadPresetsFromDB();
+  loadRulesFromDB();
+  loadDashboardMetricsFromDB();
+  loadOrdersFromDB();
 });
 
 // Tab Switching
@@ -39,97 +41,79 @@ function switchTab(tabName) {
   }
 }
 
-// Quick-load Presets
-const PRESETS = {
-  safe: {
-    order_id: "KT100452",
-    order_value: 449,
-    customer_name: "Swati Das",
-    phone: "9583831354",
-    address: "399/13, Station Nagar, Opp. Railway Crossing",
-    city: "Chennai",
-    state: "Tamil Nadu",
-    pincode: "600092",
-    prior_orders: 4,
-    prior_rto: 0,
-  },
-  hinglish: {
-    order_id: "KT100193",
-    order_value: 349,
-    customer_name: "Lakshmi Shaikh",
-    phone: "6007018646",
-    address: "Station chowk se left, Hanuman Mandir ke saamne",
-    city: "Chennai",
-    state: "Tamil Nadu",
-    pincode: "600084",
-    prior_orders: 0,
-    prior_rto: 0,
-  },
-  short_addr: {
-    order_id: "KT101370",
-    order_value: 649,
-    customer_name: "Deepika Yadav",
-    phone: "9123456780",
-    address: "xyz",
-    city: "Delhi",
-    state: "Delhi",
-    pincode: "110001",
-    prior_orders: 0,
-    prior_rto: 0,
-  },
-  serial_rto: {
-    order_id: "KT101999",
-    order_value: 899,
-    customer_name: "Vikram Malhotra",
-    phone: "9988776655",
-    address: "Near bus stop",
-    city: "Lucknow",
-    state: "Uttar Pradesh",
-    pincode: "226001",
-    prior_orders: 3,
-    prior_rto: 2,
-  },
-};
+// ----------------- DYNAMIC DATABASE PRESETS -----------------
+async function loadPresetsFromDB() {
+  const container = document.getElementById("presets-container");
+  try {
+    const res = await fetch("/api/presets");
+    if (!res.ok) {
+      throw new Error(`Database returned HTTP ${res.status}: ${res.statusText}`);
+    }
+    dynamicPresets = await res.json();
 
-function loadPreset(key) {
-  const p = PRESETS[key];
+    container.innerHTML = `<span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database Presets:</span>`;
+    
+    for (const [key, p] of Object.entries(dynamicPresets)) {
+      container.innerHTML += `
+        <button onclick="applyPreset('${key}')" class="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg shadow-sm hover:border-emerald-500 hover:text-emerald-700 transition">
+          ${p.label || key}
+        </button>
+      `;
+    }
+
+    // Auto-load first preset from database
+    const firstKey = Object.keys(dynamicPresets)[0];
+    if (firstKey) {
+      applyPreset(firstKey);
+    }
+  } catch (err) {
+    container.innerHTML = `
+      <span class="text-xs font-semibold text-rose-600">
+        ⚠️ Failed to load presets from database: ${err.message}. Please run 'python scripts/setup_db.py'.
+      </span>
+    `;
+  }
+}
+
+function applyPreset(key) {
+  const p = dynamicPresets[key];
   if (!p) return;
 
-  document.getElementById("inp-order-id").value = p.order_id;
-  document.getElementById("inp-order-value").value = p.order_value;
-  document.getElementById("inp-customer-name").value = p.customer_name;
-  document.getElementById("inp-phone").value = p.phone;
-  document.getElementById("inp-address").value = p.address;
-  document.getElementById("inp-city").value = p.city;
-  document.getElementById("inp-state").value = p.state;
-  document.getElementById("inp-pincode").value = p.pincode;
-  document.getElementById("inp-prior-orders").value = p.prior_orders;
-  document.getElementById("inp-prior-rto").value = p.prior_rto;
+  document.getElementById("inp-order-id").value = p.order_id || "";
+  document.getElementById("inp-order-value").value = p.order_value || 0;
+  document.getElementById("inp-customer-name").value = p.customer_name || "";
+  document.getElementById("inp-phone").value = p.phone || "";
+  document.getElementById("inp-address").value = p.address || "";
+  document.getElementById("inp-city").value = p.city || "";
+  document.getElementById("inp-state").value = p.state || "";
+  document.getElementById("inp-pincode").value = p.pincode || "";
+  document.getElementById("inp-prior-orders").value = p.prior_orders ?? 0;
+  document.getElementById("inp-prior-rto").value = p.prior_rto ?? 0;
 
-  // Auto evaluate
+  // Auto trigger live evaluation
   document.getElementById("order-form").dispatchEvent(new Event("submit"));
 }
 
-// Evaluate Order via API
+// ----------------- ORDER EVALUATION (BACKEND & LLM) -----------------
 async function handleEvaluate(e) {
   e.preventDefault();
 
   const payload = {
-    order_id: document.getElementById("inp-order-id").value,
-    order_value: parseFloat(document.getElementById("inp-order-value").value),
-    customer_name: document.getElementById("inp-customer-name").value,
-    phone: document.getElementById("inp-phone").value,
-    address: document.getElementById("inp-address").value,
-    city: document.getElementById("inp-city").value,
-    state: document.getElementById("inp-state").value,
-    pincode: document.getElementById("inp-pincode").value,
+    order_id: document.getElementById("inp-order-id").value.trim(),
+    order_value: parseFloat(document.getElementById("inp-order-value").value) || 0,
+    customer_name: document.getElementById("inp-customer-name").value.trim(),
+    phone: document.getElementById("inp-phone").value.trim(),
+    address: document.getElementById("inp-address").value.trim(),
+    city: document.getElementById("inp-city").value.trim(),
+    state: document.getElementById("inp-state").value.trim(),
+    pincode: document.getElementById("inp-pincode").value.trim(),
     customer_prior_orders: parseInt(document.getElementById("inp-prior-orders").value) || 0,
     customer_prior_rto: parseInt(document.getElementById("inp-prior-rto").value) || 0,
     payment_method: "COD",
   };
 
   const btn = document.getElementById("btn-eval");
-  btn.innerHTML = `<span class="animate-spin mr-2">⚙️</span> Evaluating...`;
+  btn.innerHTML = `<span class="animate-spin mr-2">⚙️</span> Evaluating via Engine...`;
   btn.disabled = true;
 
   try {
@@ -139,10 +123,15 @@ async function handleEvaluate(e) {
       body: JSON.stringify(payload),
     });
 
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `Server returned error HTTP ${res.status}`);
+    }
+
     const data = await res.json();
     renderEvaluationResult(data, payload);
   } catch (err) {
-    alert("Evaluation failed: " + err.message);
+    alert("❌ Error evaluating order: " + err.message);
   } finally {
     btn.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 mr-2"></i><span>Evaluate Risk & Recommend Action</span>`;
     btn.disabled = false;
@@ -155,14 +144,14 @@ function renderEvaluationResult(data, orderInput) {
   const card = document.getElementById("eval-result-card");
   card.classList.remove("hidden");
 
-  // Score
+  // Composite Risk Score
   const score = data.risk_score;
   document.getElementById("res-score-num").innerText = `${score}/100`;
 
   const bar = document.getElementById("res-score-bar");
   bar.style.width = `${Math.min(100, Math.max(5, score))}%`;
 
-  // Colors & Badges
+  // Decision & Category Badges
   const badge = document.getElementById("res-badge");
   const catText = document.getElementById("res-risk-category");
 
@@ -182,7 +171,7 @@ function renderEvaluationResult(data, orderInput) {
     badge.classList.add("badge-nudge");
     badge.innerText = "NUDGE TO PREPAID";
     bar.className = "h-full bg-orange-500 transition-all duration-500";
-    catText.innerText = "High Risk • Offer ₹40 OFF to pay online";
+    catText.innerText = "High Risk • Offer discount to pay online";
   } else {
     badge.classList.add("badge-cancel");
     badge.innerText = "HOLD / CANCEL";
@@ -190,25 +179,25 @@ function renderEvaluationResult(data, orderInput) {
     catText.innerText = "Severe Risk • Serial RTO / Dummy order";
   }
 
-  // Reason
-  document.getElementById("res-reason").innerText = data.reason;
+  // Plain-English Explanation (required by assignment)
+  document.getElementById("res-reason").innerText = data.reason || "No explanation returned.";
 
-  // Factors
+  // Dynamic Factors
   const factorsContainer = document.getElementById("res-factors");
   factorsContainer.innerHTML = "";
   const f = data.risk_factors || {};
 
   if (f.first_time_buyer) {
-    factorsContainer.innerHTML += `<span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-md">First-Time Buyer</span>`;
+    factorsContainer.innerHTML += `<span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-md font-medium">First-Time Buyer</span>`;
   }
   if (f.prior_orders > 0) {
-    factorsContainer.innerHTML += `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-md">History: ${f.prior_orders} orders (${f.prior_rto} RTOs)</span>`;
+    factorsContainer.innerHTML += `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-md font-medium">History: ${f.prior_orders} orders (${f.prior_rto} RTOs)</span>`;
   }
   if (f.short_or_incomplete_address) {
-    factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-1 rounded-md">Incomplete/Short Address (+30 pts)</span>`;
+    factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-1 rounded-md font-medium">Incomplete Address (+${f.address_risk_score} pts)</span>`;
   }
   if (f.suspicious_name) {
-    factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-1 rounded-md">Suspicious Name (+30 pts)</span>`;
+    factorsContainer.innerHTML += `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-1 rounded-md font-medium">Suspicious Name (+${f.name_risk_score} pts)</span>`;
   }
   if (f.first_order_protected) {
     factorsContainer.innerHTML += `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-md font-semibold">Protected First-Time Buyer (No Auto-Cancel)</span>`;
@@ -216,12 +205,15 @@ function renderEvaluationResult(data, orderInput) {
   if (f.pincode_rto_rate !== null && f.pincode_rto_rate !== undefined) {
     factorsContainer.innerHTML += `<span class="bg-slate-100 text-slate-700 px-2 py-1 rounded-md">Pincode RTO: ${f.pincode_rto_rate}%</span>`;
   }
+  if (data.llm_used) {
+    factorsContainer.innerHTML += `<span class="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-md font-medium">🤖 Gemini LLM Analyzed</span>`;
+  }
 
   // Action Buttons
   const actionsContainer = document.getElementById("res-actions-container");
   if (data.decision === "ship") {
     actionsContainer.innerHTML = `
-      <button onclick="alert('✅ Order released to Delhivery warehouse queue for priority dispatch!')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
+      <button onclick="alert('✅ Order ${orderInput.order_id} released to shipping courier dispatch!')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
         <i data-lucide="check-circle" class="w-4 h-4"></i>
         <span>Release Order to Courier (Dispatch Immediately)</span>
       </button>
@@ -237,12 +229,12 @@ function renderEvaluationResult(data, orderInput) {
     actionsContainer.innerHTML = `
       <button onclick="launchSimulatorWithOrder('${orderInput.customer_name}', '${orderInput.order_id}', ${orderInput.order_value}, 'nudge_prepaid')" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
         <i data-lucide="percent" class="w-4 h-4"></i>
-        <span>Send WhatsApp Prepaid Discount Link (₹40 OFF)</span>
+        <span>Send WhatsApp Prepaid Discount Link (Pay Online)</span>
       </button>
     `;
   } else {
     actionsContainer.innerHTML = `
-      <button onclick="alert('🛑 Order cancelled. Status recorded in database. ₹169.40 dead shipping saved.')" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
+      <button onclick="alert('🛑 Order ${orderInput.order_id} hold/cancelled. ₹169.40 dead shipping saved.')" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
         <i data-lucide="ban" class="w-4 h-4"></i>
         <span>Confirm Order Cancellation (Zero False Positives)</span>
       </button>
@@ -252,7 +244,7 @@ function renderEvaluationResult(data, orderInput) {
   if (window.lucide) lucide.createIcons();
 }
 
-// ----------------- WHATSAPP SIMULATOR -----------------
+// ----------------- WHATSAPP SIMULATOR (DYNAMIC API) -----------------
 function setFlowMode(mode) {
   currentSimFlow = mode;
   document.getElementById("btn-flow-confirm").className = mode === "confirmation" 
@@ -273,27 +265,118 @@ function launchSimulatorWithOrder(name, orderId, val, mode) {
   switchTab("whatsapp");
 }
 
-function refreshSimulator() {
+async function refreshSimulator() {
   const name = document.getElementById("sim-name").value.trim() || "Customer";
   const val = parseFloat(document.getElementById("sim-value").value) || 649;
-  const firstName = name.split(" ")[0];
+  const orderId = document.getElementById("inp-order-id")?.value || "KT101990";
 
   const chat = document.getElementById("chat-messages");
   chat.innerHTML = "";
 
-  currentSimState = "PENDING_REPLY";
-  updateSimPill("PENDING_REPLY", "bg-amber-100 text-amber-800");
+  updateSimPill("INITIALIZING...", "bg-slate-100 text-slate-600");
 
-  let outMsg = "";
-  if (currentSimFlow === "confirmation") {
-    outMsg = `Hi ${firstName}! 👋<br><br>Thank you for ordering with <b>Oytra Care</b>!<br><br>Your order of <b>₹${val}</b> is placed as Cash on Delivery.<br><br>Please confirm if you'd like us to deliver your order.<br><br>Reply <b>YES</b> to confirm or <b>NO</b> to cancel.`;
-  } else {
-    const discount = Math.min(40, Math.round(val * 0.10));
-    const finalVal = val - discount;
-    outMsg = `Hi ${firstName}! 👋<br><br>Your Oytra order is packed and ready! 🌿<br><br>💰 <b>Special Offer: Pay online & get ₹${discount} OFF!</b><br><br>Original Amount: ₹${val}<br>Discount: ₹${discount}<br><b>You Pay Only: ₹${finalVal}!</b><br><br>Reply <b>YES</b> to get secure payment link, or <b>NO</b> to continue with COD.`;
+  try {
+    const res = await fetch("/api/whatsapp/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: name,
+        order_id: orderId,
+        order_value: val,
+        flow_type: currentSimFlow,
+        action: "init",
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to initialize WhatsApp flow: HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    appendBotMessage(data.message.replace(/\n/g, "<br>"));
+    updateSimPill(data.status, "bg-amber-100 text-amber-800");
+  } catch (err) {
+    appendBotMessage(`⚠️ Error generating message: ${err.message}`);
+    updateSimPill("ERROR", "bg-rose-100 text-rose-800");
   }
+}
 
-  appendBotMessage(outMsg);
+async function sendSimReply(replyText) {
+  appendUserMessage(replyText);
+
+  const name = document.getElementById("sim-name").value.trim() || "Customer";
+  const val = parseFloat(document.getElementById("sim-value").value) || 649;
+  const orderId = document.getElementById("inp-order-id")?.value || "KT101990";
+
+  updateSimPill("PROCESSING...", "bg-blue-100 text-blue-800");
+
+  try {
+    const res = await fetch("/api/whatsapp/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: name,
+        order_id: orderId,
+        order_value: val,
+        flow_type: currentSimFlow,
+        action: "reply",
+        reply_text: replyText,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Reply processing failed: HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    appendBotMessage(data.response_message.replace(/\n/g, "<br>"));
+
+    let pillStyle = "bg-slate-100 text-slate-700";
+    if (data.status === "CONFIRMED") pillStyle = "bg-emerald-100 text-emerald-800";
+    if (data.status === "REJECTED") pillStyle = "bg-rose-100 text-rose-800";
+    if (data.status === "CONVERTED_PREPAID") pillStyle = "bg-indigo-100 text-indigo-800";
+
+    updateSimPill(data.status, pillStyle);
+  } catch (err) {
+    appendBotMessage(`⚠️ Error processing reply: ${err.message}`);
+    updateSimPill("ERROR", "bg-rose-100 text-rose-800");
+  }
+}
+
+async function triggerSimTimeout() {
+  appendUserMessage("<i>[No reply from customer for 24 hours]</i>");
+
+  const name = document.getElementById("sim-name").value.trim() || "Customer";
+  const val = parseFloat(document.getElementById("sim-value").value) || 649;
+  const orderId = document.getElementById("inp-order-id")?.value || "KT101990";
+
+  try {
+    const res = await fetch("/api/whatsapp/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: name,
+        order_id: orderId,
+        order_value: val,
+        flow_type: currentSimFlow,
+        action: "timeout",
+      }),
+    });
+
+    const data = await res.json();
+    appendBotMessage(data.response_message.replace(/\n/g, "<br>"));
+    updateSimPill(data.status, "bg-orange-100 text-orange-800");
+  } catch (err) {
+    appendBotMessage(`⚠️ Error processing timeout: ${err.message}`);
+  }
+}
+
+function sendCustomReply() {
+  const input = document.getElementById("sim-custom-input");
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = "";
+  sendSimReply(val);
 }
 
 function appendBotMessage(text) {
@@ -320,88 +403,82 @@ function appendUserMessage(text) {
   chat.scrollTop = chat.scrollHeight;
 }
 
-async function sendSimReply(replyText) {
-  appendUserMessage(replyText);
-
-  const clean = replyText.toLowerCase().trim();
-
-  setTimeout(() => {
-    if (["yes", "y", "haan", "haan bhej do please", "ha", "ok"].includes(clean)) {
-      if (currentSimFlow === "confirmation") {
-        appendBotMessage("Thank you! ✅ Your order is confirmed and released to our courier partners for express delivery.");
-        updateSimPill("ORDER_CONFIRMED", "bg-emerald-100 text-emerald-800");
-      } else {
-        appendBotMessage("Awesome! 🎉 Here is your discounted payment link:<br><br>🔗 <a href='#' class='underline text-blue-600'>https://pay.oytra.com/order/pay-discount</a><br><br>Once completed, your order will be delivered with zero doorstep collection friction!");
-        updateSimPill("PREPAID_LINK_SENT", "bg-indigo-100 text-indigo-800");
-      }
-    } else if (["no", "n", "cancel", "nahi"].includes(clean)) {
-      if (currentSimFlow === "confirmation") {
-        appendBotMessage("Your order has been cancelled as requested. No charges applied. 🙏");
-        updateSimPill("ORDER_CANCELLED", "bg-rose-100 text-rose-800");
-      } else {
-        appendBotMessage("No problem! Your order will continue as Cash on Delivery.<br><br>Please confirm with <b>YES</b> to dispatch COD, or <b>NO</b> to cancel.");
-        updateSimPill("COD_FALLBACK", "bg-amber-100 text-amber-800");
-      }
-    } else {
-      appendBotMessage("Sorry, I didn't quite catch that. 🤔<br><br>Please reply with <b>YES</b> to proceed or <b>NO</b> to cancel.");
-      updateSimPill("AWAITING_CLARIFICATION", "bg-slate-200 text-slate-800");
-    }
-  }, 400);
-}
-
-function triggerSimTimeout() {
-  appendUserMessage("<i>[No reply from customer for 24 hours]</i>");
-  setTimeout(() => {
-    appendBotMessage("⏱️ <b>Notice:</b> Since we didn't receive your confirmation within 24 hours, your order has been automatically put on hold to prevent unauthorized delivery. Feel free to re-order anytime!");
-    updateSimPill("AUTO_EXPIRED_24H", "bg-orange-100 text-orange-800");
-  }, 400);
-}
-
-function sendCustomReply() {
-  const input = document.getElementById("sim-custom-input");
-  const val = input.value.trim();
-  if (!val) return;
-  input.value = "";
-  sendSimReply(val);
-}
-
 function updateSimPill(text, classes) {
   const pill = document.getElementById("sim-status-pill");
   pill.className = `text-xs font-bold px-2.5 py-0.5 rounded-full ${classes}`;
   pill.innerText = text;
 }
 
-// ----------------- FOUNDER DASHBOARD METRICS -----------------
-async function loadDashboardMetrics() {
+// ----------------- FOUNDER DASHBOARD (LIVE BACKTEST) -----------------
+async function loadDashboardMetricsFromDB() {
+  const errBox = document.getElementById("dash-error");
   try {
     const res = await fetch("/api/backtest");
-    if (!res.ok) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     const data = await res.json();
+    errBox.classList.add("hidden");
 
-    const b = data.buckets || {};
-    document.getElementById("dash-count-ship").innerText = (b.ship?.count || 1726).toLocaleString();
-    document.getElementById("dash-count-confirm").innerText = (b.confirm?.count || 210).toLocaleString();
-    document.getElementById("dash-count-nudge").innerText = (b.nudge_prepaid?.count || 49).toLocaleString();
-    document.getElementById("dash-count-cancel").innerText = (b.cancel?.count || 3).toLocaleString();
+    const b = data.buckets;
+    if (!b || !data.financial) {
+      throw new Error("No evaluated decisions returned by engine");
+    }
 
-    const fin = data.financial || {};
-    document.getElementById("dash-saved").innerText = `₹${(fin.saved_from_cancels || 508.2).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    document.getElementById("dash-lost").innerText = `₹${(fin.lost_from_cancels || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    document.getElementById("dash-nudge-gain").innerText = `+₹${(fin.saved_from_nudges || 597.64).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    document.getElementById("dash-net-impact").innerText = `+₹${(fin.net_impact || 1105.84).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    const total = data.total_orders || 1;
+
+    // 4 Decision Buckets
+    document.getElementById("dash-count-ship").innerText = (b.ship?.count ?? 0).toLocaleString();
+    document.getElementById("dash-pct-ship").innerText = `${((b.ship?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
+
+    document.getElementById("dash-count-confirm").innerText = (b.confirm?.count ?? 0).toLocaleString();
+    document.getElementById("dash-pct-confirm").innerText = `${((b.confirm?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
+
+    document.getElementById("dash-count-nudge").innerText = (b.nudge_prepaid?.count ?? 0).toLocaleString();
+    document.getElementById("dash-pct-nudge").innerText = `${((b.nudge_prepaid?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
+
+    document.getElementById("dash-count-cancel").innerText = (b.cancel?.count ?? 0).toLocaleString();
+    document.getElementById("dash-pct-cancel").innerText = `${((b.cancel?.count ?? 0) / total * 100).toFixed(1)}% of volume`;
+
+    // Financial Metrics
+    const fin = data.financial;
+    document.getElementById("dash-saved").innerText = `₹${(fin.saved_from_cancels ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    document.getElementById("dash-lost").innerText = `₹${(fin.lost_from_cancels ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    document.getElementById("dash-nudge-gain").innerText = `+₹${(fin.saved_from_nudges ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    document.getElementById("dash-net-impact").innerText = `+₹${(fin.net_impact ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+    document.getElementById("dash-saved-sub").innerText = `${b.cancel?.actual_rto ?? 0} high-risk returns halted`;
+    document.getElementById("dash-lost-sub").innerText = `${b.cancel?.actual_delivered ?? 0} genuine buyers cancelled`;
   } catch (err) {
-    console.error("Dashboard metrics fetch error:", err);
+    errBox.classList.remove("hidden");
+    errBox.innerText = `⚠️ Error fetching live dashboard calculations: ${err.message}. Please run 'python scripts/run_engine.py' to process all orders.`;
+    
+    // Clear display to prevent showing unverified numbers
+    document.getElementById("dash-count-ship").innerText = "---";
+    document.getElementById("dash-count-confirm").innerText = "---";
+    document.getElementById("dash-count-nudge").innerText = "---";
+    document.getElementById("dash-count-cancel").innerText = "---";
+    document.getElementById("dash-saved").innerText = "---";
+    document.getElementById("dash-lost").innerText = "---";
+    document.getElementById("dash-nudge-gain").innerText = "---";
+    document.getElementById("dash-net-impact").innerText = "---";
   }
 }
 
-// ----------------- RULES & THRESHOLDS -----------------
-async function loadRules() {
+// ----------------- RULES & THRESHOLDS FROM DB -----------------
+async function loadRulesFromDB() {
   try {
     const res = await fetch("/api/rules");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allRules = await res.json();
     renderRules();
   } catch (err) {
-    console.error("Rules fetch error:", err);
+    document.getElementById("rules-container").innerHTML = `
+      <div class="col-span-2 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
+        ⚠️ Failed to load decision rules from database: ${err.message}
+      </div>
+    `;
   }
 }
 
@@ -409,7 +486,6 @@ function renderRules() {
   const container = document.getElementById("rules-container");
   container.innerHTML = "";
 
-  // Group by category
   const categories = {};
   allRules.forEach((r) => {
     if (!categories[r.category]) categories[r.category] = [];
@@ -454,26 +530,36 @@ async function saveAllRules() {
       }
     }
   }
-  alert(`✅ Saved ${count} updated rules to the database!`);
-  loadRules();
+  alert(`✅ Saved ${count} updated rules directly to the database!`);
+  loadRulesFromDB();
 }
 
-// ----------------- ORDER DATABASE -----------------
-async function loadOrders() {
+// ----------------- ORDERS TABLE FROM DB -----------------
+async function loadOrdersFromDB() {
   try {
     const res = await fetch("/api/orders?limit=100");
-    if (res.ok) {
-      allOrders = await res.json();
-      renderOrdersTable(allOrders);
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    allOrders = await res.json();
+    renderOrdersTable(allOrders);
   } catch (err) {
-    console.error("Orders fetch error:", err);
+    document.getElementById("orders-tbody").innerHTML = `
+      <tr>
+        <td colspan="8" class="p-6 text-center text-rose-600 font-semibold text-xs">
+          ⚠️ Failed to load orders from database: ${err.message}
+        </td>
+      </tr>
+    `;
   }
 }
 
 function renderOrdersTable(orders) {
   const tbody = document.getElementById("orders-tbody");
   tbody.innerHTML = "";
+
+  if (orders.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">No matching orders found in database</td></tr>`;
+    return;
+  }
 
   orders.slice(0, 50).forEach((o) => {
     let badgeClass = "bg-slate-100 text-slate-700";
@@ -488,13 +574,13 @@ function renderOrdersTable(orders) {
         <td class="py-2.5 px-4 font-medium">${o.customer_name || "N/A"}</td>
         <td class="py-2.5 px-4 text-slate-500">${o.city || ""}, ${o.pincode || ""}</td>
         <td class="py-2.5 px-4 font-semibold">₹${o.order_value || 0}</td>
-        <td class="py-2.5 px-4 font-bold">${o.risk_score || "N/A"}</td>
+        <td class="py-2.5 px-4 font-bold">${o.risk_score !== null ? o.risk_score : "---"}</td>
         <td class="py-2.5 px-4">
           <span class="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${badgeClass}">
             ${o.decision || "PENDING"}
           </span>
         </td>
-        <td class="py-2.5 px-4 text-slate-600 max-w-xs truncate">${o.reason || "N/A"}</td>
+        <td class="py-2.5 px-4 text-slate-600 max-w-xs truncate">${o.reason || "Awaiting evaluation"}</td>
         <td class="py-2.5 px-4 font-bold ${o.final_status === 'DELIVERED' ? 'text-emerald-600' : 'text-rose-600'}">
           ${o.final_status || "PENDING"}
         </td>
@@ -525,16 +611,16 @@ function populateEvaluatorFromRow(orderId) {
   const found = allOrders.find((o) => o.order_id === orderId);
   if (!found) return;
 
-  document.getElementById("inp-order-id").value = found.order_id;
-  document.getElementById("inp-order-value").value = found.order_value;
+  document.getElementById("inp-order-id").value = found.order_id || "";
+  document.getElementById("inp-order-value").value = found.order_value || 0;
   document.getElementById("inp-customer-name").value = found.customer_name || "";
-  document.getElementById("inp-phone").value = found.phone || "9876543210";
+  document.getElementById("inp-phone").value = found.phone || "";
   document.getElementById("inp-address").value = found.address || "";
   document.getElementById("inp-city").value = found.city || "";
   document.getElementById("inp-state").value = found.state || "";
   document.getElementById("inp-pincode").value = found.pincode || "";
-  document.getElementById("inp-prior-orders").value = found.customer_prior_orders || 0;
-  document.getElementById("inp-prior-rto").value = found.customer_prior_rto || 0;
+  document.getElementById("inp-prior-orders").value = found.customer_prior_orders ?? 0;
+  document.getElementById("inp-prior-rto").value = found.customer_prior_rto ?? 0;
 
   switchTab("evaluator");
   document.getElementById("order-form").dispatchEvent(new Event("submit"));

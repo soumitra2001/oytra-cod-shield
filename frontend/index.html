@@ -70,21 +70,10 @@
           <p class="text-sm text-slate-600">Simulate evaluating a new COD order received from Shopify before releasing it to shipping.</p>
         </div>
 
-        <!-- 1-Click Test Scenarios -->
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Quick Presets:</span>
-          <button onclick="loadPreset('safe')" class="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg shadow-sm hover:border-emerald-500 hover:text-emerald-700 transition">
-            ✅ Loyal Safe Buyer
-          </button>
-          <button onclick="loadPreset('hinglish')" class="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg shadow-sm hover:border-amber-500 hover:text-amber-700 transition">
-            🌿 First-Time (Hinglish)
-          </button>
-          <button onclick="loadPreset('short_addr')" class="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg shadow-sm hover:border-orange-500 hover:text-orange-700 transition">
-            ⚠️ Incomplete "xyz" Address
-          </button>
-          <button onclick="loadPreset('serial_rto')" class="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg shadow-sm hover:border-rose-500 hover:text-rose-700 transition">
-            🛑 Serial Returner (2 RTOs)
-          </button>
+        <!-- 1-Click Test Scenarios (Loaded dynamically from database) -->
+        <div id="presets-container" class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database Presets:</span>
+          <span class="text-xs text-slate-400">Loading from DB...</span>
         </div>
       </div>
 
@@ -359,27 +348,30 @@
         </button>
       </div>
 
+      <!-- Live Error / Notice Banner -->
+      <div id="dash-error" class="hidden bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-xs font-semibold"></div>
+
       <!-- 4 Decision Buckets -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-bold uppercase text-slate-400">1. Ship As-Is</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-ship">1,726</div>
-          <div class="text-xs text-emerald-600 font-semibold mt-1">86.8% of volume</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-ship">---</div>
+          <div class="text-xs text-slate-400 font-semibold mt-1" id="dash-pct-ship">---</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-bold uppercase text-slate-400">2. WhatsApp Confirm</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-confirm">210</div>
-          <div class="text-xs text-amber-600 font-semibold mt-1">10.6% of volume</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-confirm">---</div>
+          <div class="text-xs text-slate-400 font-semibold mt-1" id="dash-pct-confirm">---</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-bold uppercase text-slate-400">3. Nudge to Prepaid</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-nudge">49</div>
-          <div class="text-xs text-orange-600 font-semibold mt-1">2.5% of volume</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-nudge">---</div>
+          <div class="text-xs text-slate-400 font-semibold mt-1" id="dash-pct-nudge">---</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-bold uppercase text-slate-400">4. Hold / Cancel</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-cancel">3</div>
-          <div class="text-xs text-rose-600 font-semibold mt-1">0.15% (100% precision)</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-count-cancel">---</div>
+          <div class="text-xs text-slate-400 font-semibold mt-1" id="dash-pct-cancel">---</div>
         </div>
       </div>
 
@@ -387,23 +379,23 @@
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-emerald-100 bg-emerald-50/30">
           <div class="text-xs font-bold uppercase text-emerald-700">₹ Saved from Avoided RTOs</div>
-          <div class="text-2xl font-black text-emerald-900 mt-1" id="dash-saved">₹508.20</div>
-          <div class="text-xs text-slate-500 mt-1">3 dead return shipments halted</div>
+          <div class="text-2xl font-black text-emerald-900 mt-1" id="dash-saved">---</div>
+          <div class="text-xs text-slate-500 mt-1" id="dash-saved-sub">Avoided returns halted</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-slate-200">
           <div class="text-xs font-bold uppercase text-slate-400">₹ Lost from False Cancels</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-lost">₹0.00</div>
-          <div class="text-xs text-emerald-600 font-semibold mt-1">0 genuine buyers cancelled</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-lost">---</div>
+          <div class="text-xs text-slate-500 mt-1" id="dash-lost-sub">Genuine buyers cancelled</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-slate-200">
           <div class="text-xs font-bold uppercase text-slate-400">Prepaid Nudge Net Gain</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-nudge-gain">+₹597.64</div>
-          <div class="text-xs text-slate-500 mt-1">After deducting ₹40 discounts</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-nudge-gain">---</div>
+          <div class="text-xs text-slate-500 mt-1" id="dash-nudge-sub">Prepaid conversion savings</div>
         </div>
         <div class="bg-emerald-600 text-white p-5 rounded-2xl shadow-md">
           <div class="text-xs font-bold uppercase text-emerald-200">⭐ Net Financial Contribution</div>
-          <div class="text-2xl font-black mt-1" id="dash-net-impact">+₹1,105.84</div>
-          <div class="text-xs text-emerald-100 mt-1">Net profit preserved this batch</div>
+          <div class="text-2xl font-black mt-1" id="dash-net-impact">---</div>
+          <div class="text-xs text-emerald-100 mt-1">Live calculated net impact</div>
         </div>
       </div>
 

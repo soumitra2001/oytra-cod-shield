@@ -66,8 +66,23 @@ def handle_reply(reply: str, flow_type: str) -> dict:
         Dict with: action, response_message, new_status
     """
     reply = reply.strip().lower()
+    words = set(reply.replace(",", " ").replace(".", " ").replace("!", " ").split())
 
-    if reply in ("yes", "y", "ha", "haan", "han", "ok", "confirm"):
+    is_affirmative = (
+        bool(words.intersection({"yes", "y", "ha", "haan", "han", "ok", "okay", "confirm", "pls"}))
+        or "bhej do" in reply
+        or "bhejo" in reply
+        or "deliver" in reply
+    )
+
+    is_negative = (
+        bool(words.intersection({"no", "n", "nahi", "nhi", "cancel"}))
+        or "mat bhejo" in reply
+        or "don't" in reply
+        or "dont" in reply
+    )
+
+    if is_affirmative and not is_negative:
         if flow_type == "confirmation":
             return {
                 "action": "confirm_order",
@@ -86,7 +101,7 @@ def handle_reply(reply: str, flow_type: str) -> dict:
                 ),
             }
 
-    elif reply in ("no", "n", "nahi", "nhi", "cancel"):
+    elif is_negative and not is_affirmative:
         if flow_type == "confirmation":
             return {
                 "action": "cancel_order",

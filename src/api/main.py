@@ -60,6 +60,15 @@ class WhatsAppReply(BaseModel):
     reply: str
 
 
+class WhatsAppSimulateRequest(BaseModel):
+    customer_name: str
+    order_id: str
+    order_value: float
+    flow_type: str = "confirmation"  # confirmation or nudge_prepaid
+    action: str = "init"  # init, reply, timeout
+    reply_text: str | None = None
+
+
 # ---------- Helper ----------
 
 def _load_rules() -> dict:
@@ -129,6 +138,129 @@ def get_orders(limit: int = 100, decision: str | None = None):
             }
             for r in rows
         ]
+
+
+@app.get("/api/presets")
+def get_presets():
+    """Dynamically query real orders from database representing key risk scenarios."""
+    presets = {}
+    with db_engine.connect() as conn:
+        # Safe
+        row = conn.execute(text("""
+            SELECT order_id, customer_name, phone, address, city, state, pincode, order_value,
+                   customer_prior_orders, customer_prior_rto
+            FROM orders
+            WHERE customer_prior_orders >= 3 AND customer_prior_rto = 0
+            LIMIT 1
+        """)).fetchone()
+        if row:
+            presets["safe"] = {
+                "order_id": row[0], "customer_name": row[1], "phone": row[2],
+                "address": row[3], "city": row[4], "state": row[5], "pincode": str(row[6]).replace(".0", ""),
+                "order_value": float(row[7]), "prior_orders": row[8], "prior_rto": row[9],
+                "label": "✅ Loyal Safe Buyer"
+            }
+
+        # Hinglish Landmark
+        row = conn.execute(text("""
+            SELECT order_id, customer_name, phone, address, city, state, pincode, order_value,
+                   customer_prior_orders, customer_prior_rto
+            FROM orders
+            WHERE (address LIKE '%ke saamne%' OR address LIKE '%ke paas%' OR address LIKE '%chowk%')
+            LIMIT 1
+        """)).fetchone()
+        if row:
+            presets["hinglish"] = {
+                "order_id": row[0], "customer_name": row[1], "phone": row[2],
+                "address": row[3], "city": row[4], "state": row[5], "pincode": str(row[6]).replace(".0", ""),
+                "order_value": float(row[7]), "prior_orders": row[8], "prior_rto": row[9],
+                "label": "🌿 First-Time (Hinglish)"
+            }
+
+        # Short/Incomplete Address
+        row = conn.execute(text("""
+            SELECT order_id, customer_name, phone, address, city, state, pincode, order_value,
+                   customer_prior_orders, customer_prior_rto
+            FROM orders
+            WHERE LENGTH(address) < 15
+            LIMIT 1
+        """)).fetchone()
+        if row:
+            presets["short_addr"] = {
+                "order_id": row[0], "customer_name": row[1], "phone": row[2],
+                "address": row[3], "city": row[4], "state": row[5], "pincode": str(row[6]).replace(".0", ""),
+                "order_value": float(row[7]), "prior_orders": row[8], "prior_rto": row[9],
+                "label": "⚠️ Incomplete 'xyz' Address"
+            }
+
+        # Serial Returner
+        row = conn.execute(text("""
+            SELECT order_id, customer_name, phone, address, city, state, pincode, order_value,
+                   customer_prior_orders, customer_prior_rto
+            FROM orders
+            WHERE customer_prior_rto >= 2
+            LIMIT 1
+        """)).fetchone()
+        if row:
+            presets["serial_rto"] = {
+                "order_id": row[0], "customer_name": row[1], "phone": row[2],
+                "address": row[3], "city": row[4], "state": row[5], "pincode": str(row[6]).replace(".0", ""),
+                "order_value": float(row[7]), "prior_orders": row[8], "prior_rto": row[9],
+                "label": "🛑 Serial Returner (2 RTOs)"
+            }
+
+    if not presets:
+        raise HTTPException(status_code=404, detail="No orders found in database. Please run python scripts/setup_db.py first.")
+    return presets
+
+
+@app.post("/api/whatsapp/simulate")
+def simulate_whatsapp(req: WhatsAppSimulateRequest):
+    """Simulate WhatsApp interactions dynamically using business logic."""
+    rules = _load_rules()
+    order_data = {
+        "customer_name": req.customer_name,
+        "order_id": req.order_id,
+        "order_value": req.order_value,
+    }
+
+    if req.action == "init":
+        if req.flow_type == "confirmation":
+            msg_obj = create_confirmation_message(order_data)
+            return {
+                "status": "PENDING_REPLY",
+                "message": msg_obj["message"],
+                "expires_at": msg_obj["expires_at"],
+            }
+        else:
+            discount = calculate_discount(req.order_value, rules)
+            msg_obj = create_nudge_message(order_data, discount)
+            return {
+                "status": "PENDING_REPLY",
+                "message": msg_obj["message"],
+                "discount_offered": discount,
+                "expires_at": msg_obj["expires_at"],
+            }
+
+    elif req.action == "reply":
+        reply = req.reply_text or ""
+        result = handle_reply(reply, req.flow_type)
+        return {
+            "status": result["new_status"].upper(),
+            "action": result["action"],
+            "response_message": result["response_message"],
+        }
+
+    elif req.action == "timeout":
+        timeout_action = int(rules.get("timeout_action", 1))
+        result = handle_timeout(req.flow_type, timeout_action)
+        return {
+            "status": "AUTO_EXPIRED_24H",
+            "action": result["action"],
+            "response_message": result["response_message"],
+        }
+
+    raise HTTPException(status_code=400, detail="Invalid action")
 
 
 @app.post("/api/evaluate")
