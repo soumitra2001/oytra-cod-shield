@@ -142,9 +142,10 @@ assignment-oytra/
 │   └── test_risk_scorer.py      # Unit tests
 │
 └── docs/
-    ├── business_memo.md         # Part 4: Memo to the founder
-    ├── decision_log.md          # Design decisions + reasoning
-    └── ai_usage_log.md          # AI tools used + corrections
+    ├── business-memo.pdf        # Part 4: Formatted business memo PDF
+    ├── business-memo.md         # Markdown source of memo to founder
+    ├── decision-log.md          # Design decisions & trade-offs
+    └── ai-usage-log.md          # AI tools used, debugging & lessons
 ```
 
 ---
@@ -246,6 +247,6 @@ pytest tests/ -v
 ## 📄 Deliverables
 
 1. **This repo** — runnable in < 10 minutes with zero-config local SQLite fallback
-2. **Business Memo (PDF & Markdown)** — [`docs/business-memo.pdf`](docs/business-memo.pdf) & [`docs/business_memo.md`](docs/business_memo.md)
+2. **Business Memo (PDF & Markdown)** — [`docs/business-memo.pdf`](docs/business-memo.pdf) & [`docs/business-memo.md`](docs/business-memo.md)
 3. **Decision Log** — [`docs/decision-log.md`](docs/decision-log.md)
 4. **AI Usage Log** — [`docs/ai-usage-log.md`](docs/ai-usage-log.md)

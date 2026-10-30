@@ -8,7 +8,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, HRFlowable
 )
 
-def build_pdf(filename="docs/business_memo.pdf"):
+def build_pdf(filename="docs/business-memo.pdf"):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     doc = SimpleDocTemplate(
         filename,
@@ -195,4 +195,3 @@ def build_pdf(filename="docs/business_memo.pdf"):
 
 if __name__ == "__main__":
     build_pdf("docs/business-memo.pdf")
-    build_pdf("docs/business_memo.pdf")
