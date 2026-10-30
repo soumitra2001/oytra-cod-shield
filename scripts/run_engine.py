@@ -93,7 +93,7 @@ def run_batch_evaluation(max_llm_samples: int = 20):
                 "risk_category": result["risk_category"],
                 "reason": result["reason"],
                 "risk_factors": json.dumps(result["risk_factors"]),
-                "llm_used": 1 if result["llm_used"] else 0,
+                "llm_used": bool(result["llm_used"]) if IS_POSTGRES else (1 if result["llm_used"] else 0),
                 "llm_analysis": json.dumps(result["llm_analysis"]) if result["llm_analysis"] else None,
                 "actual_status": order_dict.get("final_status"),
             })
