@@ -100,7 +100,7 @@ def build_pdf(filename="docs/business-memo.pdf"):
     # Executive Summary Box
     summary_data = [[
         Paragraph(
-            "<b>The Core Trade-off:</b> Cash on Delivery accounts for ~55% of our 3,000 monthly orders but carries a <b>28.4% Return to Origin (RTO) rate</b>, costing <b>₹169.40 per failed delivery</b>. Operations wants to aggressively cancel risky orders, but Marketing spent <b>₹300+ in Meta ad CAC</b> to acquire each buyer. Blind cancellations destroy ₹702 in gross profit and wasted CAC per genuine customer. By replacing binary 'Ship vs. Cancel' with an intelligent 4-tier routing policy (Ship As-Is, WhatsApp Confirmation, ₹40 Prepaid Nudge, and Hold/Cancel), we preserve marketing acquisition while cutting operational bleed.",
+            "<b>The Core Trade-off:</b> Cash on Delivery accounts for ~55% of our 3,000 monthly orders but carries a <b>28.4% Return to Origin (RTO) rate</b>, costing <b>Rs. 169.40 per failed delivery</b>. Operations wants to aggressively cancel risky orders, but Marketing spent <b>Rs. 300+ in Meta ad CAC</b> to acquire each buyer. Blind cancellations destroy Rs. 702 in gross profit and wasted CAC per genuine customer. By replacing binary 'Ship vs. Cancel' with an intelligent 4-tier routing policy (Ship As-Is, WhatsApp Confirmation, Rs. 40 Prepaid Nudge, and Hold/Cancel), we preserve marketing acquisition while cutting operational bleed.",
             callout_text
         )
     ]]
@@ -137,8 +137,8 @@ def build_pdf(filename="docs/business-memo.pdf"):
         [Paragraph("Action Bucket", table_cell_bold), Paragraph("Score Band", table_cell_bold), Paragraph("Order Count (%)", table_cell_bold), Paragraph("Actual RTO Rate", table_cell_bold), Paragraph("Operational Workflow & Economics", table_cell_bold)],
         [Paragraph("<b>1. Ship As-Is</b>", table_cell), Paragraph("0 – 30", table_cell), Paragraph("1,726 (86.8%)", table_cell), Paragraph("23.5%", table_cell), Paragraph("Frictionless dispatch to Delhivery. Protects brand conversion for repeat safe buyers.", table_cell)],
         [Paragraph("<b>2. WhatsApp Confirm</b>", table_cell), Paragraph("31 – 50", table_cell), Paragraph("210 (10.6%)", table_cell), Paragraph("59.5%", table_cell), Paragraph("First-time buyers with incomplete address/sparse pincode. Pauses dispatch until intent verified.", table_cell)],
-        [Paragraph("<b>3. Nudge to Prepaid</b>", table_cell), Paragraph("51 – 70", table_cell), Paragraph("49 (2.5%)", table_cell), Paragraph("63.3%", table_cell), Paragraph("High risk first-timers. Offers ₹40 discount to convert to online payment, eliminating COD door refusal.", table_cell)],
-        [Paragraph("<b>4. Hold / Cancel</b>", table_cell), Paragraph("71 – 100", table_cell), Paragraph("3 (0.15%)", table_cell), Paragraph("100.0%", table_cell), Paragraph("Serial returners (2+ prior RTOs) or verified fake test names. 100% precision saves ₹169.40/order.", table_cell)]
+        [Paragraph("<b>3. Nudge to Prepaid</b>", table_cell), Paragraph("51 – 70", table_cell), Paragraph("49 (2.5%)", table_cell), Paragraph("63.3%", table_cell), Paragraph("High risk first-timers. Offers Rs. 40 discount to convert to online payment, eliminating COD door refusal.", table_cell)],
+        [Paragraph("<b>4. Hold / Cancel</b>", table_cell), Paragraph("71 – 100", table_cell), Paragraph("3 (0.15%)", table_cell), Paragraph("100.0%", table_cell), Paragraph("Serial returners (2+ prior RTOs) or verified fake test names. 100% precision saves Rs. 169.40/order.", table_cell)]
     ]
     policy_table = Table(policy_data, colWidths=[95, 55, 75, 75, 240])
     policy_table.setStyle(TableStyle([
@@ -149,21 +149,21 @@ def build_pdf(filename="docs/business-memo.pdf"):
     ]))
     story.append(policy_table)
     story.append(Spacer(1, 4))
-    story.append(Paragraph("<b>Simulated Financial Impact:</b> Cancelling the 3 serial returners saved <b>₹508.20</b> with zero false cancellations. Nudging the 49 high-risk orders with ₹40 discount converts ~25-30% to prepaid, generating <b>+₹597 net risk savings</b>. Halting unconfirmed orders in the WhatsApp tier prevents ~25 avoidable returns, saving another <b>₹4,235</b>.", body_text))
+    story.append(Paragraph("<b>Simulated Financial Impact:</b> Cancelling the 3 serial returners saved <b>Rs. 508.20</b> with zero false cancellations. Nudging the 49 high-risk orders with Rs. 40 discount converts ~25-30% to prepaid, generating <b>+Rs. 597 net risk savings</b>. Halting unconfirmed orders in the WhatsApp tier prevents ~25 avoidable returns, saving another <b>Rs. 4,235</b>.", body_text))
 
     story.append(Spacer(1, 4))
 
     # 3. Balancing Operations vs. Marketing
-    story.append(Paragraph("3. Balancing Operations vs. Marketing: The Exact ₹ Math", section_h1))
+    story.append(Paragraph("3. Balancing Operations vs. Marketing: The Exact Financial Math", section_h1))
     story.append(Paragraph(
         "Operations wants zero returns; Marketing wants maximum GMV. We resolve this tension using unit economics rather than subjective debate:<br/>"
-        "• <b>Cost of 1 RTO = ₹169.40</b> (Forward ₹65 + Reverse ₹65 + Packaging ₹25 + 8% damage on ₹180 product = ₹14.40).<br/>"
-        "• <b>Gross Margin per Order = 62%</b> (₹402.38 gross margin on our ₹649 average cart).<br/>"
-        "• <b>Customer Acquisition Cost (CAC) = ₹300.00</b> spent upfront on Meta Ads.<br/>"
-        "If we cancel a genuine customer by mistake, we don't just forfeit ₹402 in profit—we also waste the ₹300 spent to acquire them. <b>A false cancellation costs Oytra ₹702.38, which is over 4× more expensive than absorbing an RTO!</b><br/>"
+        "• <b>Cost of 1 RTO = Rs. 169.40</b> (Forward Rs. 65 + Reverse Rs. 65 + Packaging Rs. 25 + 8% damage on Rs. 180 product = Rs. 14.40).<br/>"
+        "• <b>Gross Margin per Order = 62%</b> (Rs. 402.38 gross margin on our Rs. 649 average cart).<br/>"
+        "• <b>Customer Acquisition Cost (CAC) = Rs. 300.00</b> spent upfront on Meta Ads.<br/>"
+        "If we cancel a genuine customer by mistake, we don't just forfeit Rs. 402 in profit—we also waste the Rs. 300 spent to acquire them. <b>A false cancellation costs Oytra Rs. 702.38, which is over 4× more expensive than absorbing an RTO!</b><br/>"
         "Therefore, our policy establishes two non-negotiable guardrails:<br/>"
-        "<b>1. First-Order Protection:</b> Never cancel a first-time buyer. If their address is questionable or pincode risky, route them to WhatsApp Confirmation or Prepaid Nudge. If they confirm or pay, we retain the ₹300 CAC investment and fulfill safely.<br/>"
-        "<b>2. Why ₹40 Prepaid Discount Math Works:</b> Expected return cost on COD is 28% × ₹169.40 = <b>₹47.43</b>. Expected return cost on Prepaid is 4% × ₹169.40 = <b>₹6.78</b>. Converting an order from COD to Prepaid saves Oytra <b>₹40.65 in gross logistics risk</b>. Offering a ₹40 discount captures nearly the entire expected risk reduction while eliminating door friction and securing immediate cash flow.",
+        "<b>1. First-Order Protection:</b> Never cancel a first-time buyer. If their address is questionable or pincode risky, route them to WhatsApp Confirmation or Prepaid Nudge. If they confirm or pay, we retain the Rs. 300 CAC investment and fulfill safely.<br/>"
+        "<b>2. Why Rs. 40 Prepaid Discount Math Works:</b> Expected return cost on COD is 28% × Rs. 169.40 = <b>Rs. 47.43</b>. Expected return cost on Prepaid is 4% × Rs. 169.40 = <b>Rs. 6.78</b>. Converting an order from COD to Prepaid saves Oytra <b>Rs. 40.65 in gross logistics risk</b>. Offering a Rs. 40 discount captures nearly the entire expected risk reduction while eliminating door friction and securing immediate cash flow.",
         body_text
     ))
 
@@ -184,7 +184,7 @@ def build_pdf(filename="docs/business-memo.pdf"):
     story.append(Paragraph("5. Roadmap: What We Would Build with 2 More Weeks", section_h1))
     story.append(Paragraph(
         "<b>1. Live Shopify Webhook Listener & Fulfillment Hold API:</b> Automatically intercept orders via <code>orders/create</code> webhook and apply shipping tags (<code>RTO-Approved</code>, <code>Hold-WhatsApp</code>) directly in Shopify.<br/>"
-        "<b>2. Official Meta WhatsApp Cloud API:</b> Upgrade from our simulator to live WhatsApp Business API with interactive Quick Reply buttons (<i>'Confirm Order'</i> / <i>'Pay Online ₹40 OFF'</i>).<br/>"
+        "<b>2. Official Meta WhatsApp Cloud API:</b> Upgrade from our simulator to live WhatsApp Business API with interactive Quick Reply buttons (<i>'Confirm Order'</i> / <i>'Pay Online Rs. 40 OFF'</i>).<br/>"
         "<b>3. Dynamic Courier Routing:</b> Route high-risk pincodes to couriers with better regional performance (Delhivery performs 5.4% better in Tier 2/3 towns compared to regional providers).<br/>"
         "<b>4. Calibrated ML Classifier (XGBoost):</b> Train a gradient-boosted tree on 10,000+ orders to refine risk scoring beyond heuristic weights.",
         body_text

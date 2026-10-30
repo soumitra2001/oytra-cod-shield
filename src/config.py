@@ -7,8 +7,9 @@ from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
 
-# Database
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./orders.db")
+# Database (pre-configured cloud database with automatic local SQLite fallback)
+DEFAULT_DB_URL = "postgresql://postgres:Supriya2001G@db.rmtorpqwtepigoxdosgh.supabase.co:5432/postgres"
+DATABASE_URL = os.getenv("DATABASE_URL") or DEFAULT_DB_URL
 
 # Ensure SQLAlchemy uses psycopg2 driver if postgresql:// is provided
 if DATABASE_URL.startswith("postgresql://"):
