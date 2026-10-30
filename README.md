@@ -245,7 +245,7 @@ pytest tests/ -v
 
 ## 📄 Deliverables
 
-1. **This repo** — runnable in < 10 minutes
-2. **Business memo** — [`docs/business_memo.md`](docs/business_memo.md)
-3. **Decision log** — [`docs/decision_log.md`](docs/decision_log.md)
-4. **AI usage log** — [`docs/ai_usage_log.md`](docs/ai_usage_log.md)
+1. **This repo** — runnable in < 10 minutes with zero-config local SQLite fallback
+2. **Business Memo (PDF & Markdown)** — [`docs/business-memo.pdf`](docs/business-memo.pdf) & [`docs/business_memo.md`](docs/business_memo.md)
+3. **Decision Log** — [`docs/decision-log.md`](docs/decision-log.md)
+4. **AI Usage Log** — [`docs/ai-usage-log.md`](docs/ai-usage-log.md)
