@@ -800,9 +800,10 @@ def get_rules():
 @app.put("/api/rules/{rule_key}")
 def update_rule(rule_key: str, new_value: float):
     """Update a decision rule threshold."""
+    now_sql = "NOW()" if IS_POSTGRES else "CURRENT_TIMESTAMP"
     with db_engine.begin() as conn:
         result = conn.execute(
-            text("UPDATE decision_rules SET rule_value = :v, updated_at = NOW() WHERE rule_key = :k"),
+            text(f"UPDATE decision_rules SET rule_value = :v, updated_at = {now_sql} WHERE rule_key = :k"),
             {"v": new_value, "k": rule_key},
         )
         if result.rowcount == 0:

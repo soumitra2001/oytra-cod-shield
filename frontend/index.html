@@ -328,24 +328,27 @@
         </div>
       </div>
 
-      <!-- Key Insights Memo Excerpt -->
+      <!-- Key Findings & Assignment Unit Economics -->
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <h3 class="font-bold text-base text-slate-800 flex items-center gap-2">
-          <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500"></i>
-          Key Insights from Empirical Backtesting & Decision Engine
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-slate-600">
-          <div class="border-l-2 border-emerald-500 pl-4 space-y-1">
-            <h4 class="font-bold text-slate-800">1. Serial Returners Stopped</h4>
-            <p>Customers with $\ge 2$ prior RTOs return 76.5% of the time. Halting them upfront saves ₹169.40 per order in courier fees.</p>
+        <div>
+          <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
+            <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500"></i>
+            <span>3 Key Findings from Historical Data Analysis (Assignment Unit Economics)</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">Based strictly on analyzing our ~2,000 historical orders and applying the official take-home assignment cost benchmarks.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-600 leading-relaxed">
+          <div class="border-l-2 border-emerald-500 pl-4 space-y-1.5 bg-slate-50/50 p-3 rounded-r-xl">
+            <h4 class="font-bold text-slate-800 text-sm">1. Stopping Serial Returners (2+ Past Returns)</h4>
+            <p>Historical data shows customers with <strong>2 or more past returns (RTOs) fail delivery 76.5% of the time</strong>. Halting these specific repeat returners saves <strong>₹169.40 per order</strong> in wasted courier (forward ₹65 + return ₹65) and packaging fees without hurting genuine buyers.</p>
           </div>
-          <div class="border-l-2 border-amber-500 pl-4 space-y-1">
-            <h4 class="font-bold text-slate-800">2. Marketing Acquisition Saved</h4>
-            <p>First-time buyer protection prevents high-risk first orders from cancellation, preserving over ₹300 in Meta advertising CAC.</p>
+          <div class="border-l-2 border-amber-500 pl-4 space-y-1.5 bg-slate-50/50 p-3 rounded-r-xl">
+            <h4 class="font-bold text-slate-800 text-sm">2. Protecting First-Time Buyers (₹300 Ad Spend)</h4>
+            <p>Marketing spends <strong>₹300 in Meta ads (CAC)</strong> to acquire each new customer. If we cancel a first-time buyer, we lose that ₹300 plus ₹402 gross margin. Our engine <strong>never auto-cancels first orders</strong>; instead, it sends a WhatsApp message or offers ₹40 off to pay online.</p>
           </div>
-          <div class="border-l-2 border-indigo-500 pl-4 space-y-1">
-            <h4 class="font-bold text-slate-800">3. Pincode Smoothing Applied</h4>
-            <p>Empirical Bayesian shrinkage ensures low-volume pincodes aren't unfairly penalized while flagging high-RTO clusters.</p>
+          <div class="border-l-2 border-indigo-500 pl-4 space-y-1.5 bg-slate-50/50 p-3 rounded-r-xl">
+            <h4 class="font-bold text-slate-800 text-sm">3. Pincode Fairness (No Unfair Blacklisting)</h4>
+            <p>Over <strong>82% of pincodes only have 1 or 2 past orders</strong>. If an area had just 1 order that happened to return, blacklisting it would choke off future sales. The engine requires <strong>at least 5 orders</strong> before using an area's return rate as a negative factor.</p>
           </div>
         </div>
       </div>
@@ -362,6 +365,17 @@
           <i data-lucide="save" class="w-3.5 h-3.5"></i>
           <span>Save Changes to Database</span>
         </button>
+      </div>
+
+      <!-- Live Database Persistence & Engine Integration Banner -->
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-950 flex items-start gap-3">
+        <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0"></i>
+        <div class="space-y-1">
+          <p class="font-bold text-emerald-900">Live Database Persistence & Decision Engine Usage:</p>
+          <p class="leading-relaxed text-emerald-800">
+            Every rule and threshold below is persisted in the <strong><code class="bg-emerald-100 px-1 py-0.5 rounded font-mono">decision_rules</code></strong> table in the database. When you modify and update any value (e.g., changing <code class="bg-emerald-100 px-1 py-0.5 rounded font-mono">ship_max_score</code> or <code class="bg-emerald-100 px-1 py-0.5 rounded font-mono">max_prepaid_discount</code>), the engine queries these exact values live during <strong>Create Order</strong> evaluation to calculate risk points, map action tiers, and set WhatsApp discount amounts.
+          </p>
+        </div>
       </div>
 
       <div id="rules-container" class="grid grid-cols-1 md:grid-cols-2 gap-6">
