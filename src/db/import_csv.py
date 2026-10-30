@@ -74,6 +74,7 @@ def compute_pincode_stats():
                 ROUND(AVG(order_value), 2) AS avg_order_value,
                 CASE WHEN COUNT(*) >= 5 THEN TRUE ELSE FALSE END AS risk_reliable
             FROM orders
+            WHERE pincode IS NOT NULL AND pincode != ''
             GROUP BY pincode
         """))
 
