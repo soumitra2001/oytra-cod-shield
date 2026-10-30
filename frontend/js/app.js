@@ -185,10 +185,16 @@ function renderCreatedOrdersTable(orders) {
           </span>
         </td>
         <td class="py-3 px-4 text-slate-600 max-w-xs truncate text-[11px]">${o.reason || "Evaluated by engine"}</td>
-        <td class="py-3 px-4">
-          <span class="font-bold text-[11px] px-2 py-0.5 rounded-md ${getStatusClass(o.final_status)}">
-            ${o.final_status || "PENDING"}
-          </span>
+        <td class="py-3 px-4" onclick="event.stopPropagation()">
+          <select onchange="updateOrderStatus('${o.order_id}', this.value)" class="text-[11px] font-bold px-2 py-1 rounded-lg border focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-sm ${getStatusClass(o.final_status)}">
+            <option value="APPROVED_FOR_SHIPPING" ${o.final_status === 'APPROVED_FOR_SHIPPING' ? 'selected' : ''}>🚚 APPROVED_FOR_SHIPPING</option>
+            <option value="CONFIRMED" ${o.final_status === 'CONFIRMED' ? 'selected' : ''}>💬 CONFIRMED</option>
+            <option value="PENDING_CONFIRMATION" ${o.final_status === 'PENDING_CONFIRMATION' ? 'selected' : ''}>⏳ PENDING_CONFIRMATION</option>
+            <option value="DELIVERED" ${o.final_status === 'DELIVERED' ? 'selected' : ''}>✅ DELIVERED</option>
+            <option value="RTO" ${o.final_status === 'RTO' ? 'selected' : ''}>❌ RTO (RETURNED)</option>
+            <option value="CUSTOMER_CANCELLED" ${o.final_status === 'CUSTOMER_CANCELLED' ? 'selected' : ''}>🚫 CANCELLED</option>
+            <option value="CONVERTED_PREPAID" ${o.final_status === 'CONVERTED_PREPAID' ? 'selected' : ''}>💳 PREPAID</option>
+          </select>
         </td>
         <td class="py-3 px-4 text-center" onclick="event.stopPropagation()">
           <button onclick="openOrderModal('${o.order_id}')" class="px-2.5 py-1 text-xs font-semibold ${hasWhatsApp ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'} rounded-lg transition inline-flex items-center gap-1 shadow-sm">
@@ -224,6 +230,42 @@ function filterCreatedOrdersTable() {
     );
   });
   renderCreatedOrdersTable(filtered);
+}
+
+// ----------------- MANUAL STATUS OVERRIDE -----------------
+async function updateOrderStatus(orderId, newStatus) {
+  try {
+    const res = await fetch(`/api/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    if (!res.ok) throw new Error("Could not update order status");
+
+    // Refresh created orders table
+    await loadCreatedOrdersFromDB();
+
+    // If modal is open for this order, update modal status badge
+    if (currentModalOrder && currentModalOrder.order_id === orderId) {
+      currentModalOrder.final_status = newStatus;
+      const statusBadge = document.getElementById("modal-status-badge");
+      if (statusBadge) {
+        statusBadge.innerText = newStatus;
+        statusBadge.className = `px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusClass(newStatus)}`;
+      }
+    }
+
+    // Refresh Founder Dashboard metrics so calculations immediately update
+    loadDashboardMetrics();
+
+  } catch (err) {
+    alert("❌ Error updating status: " + err.message);
+  }
+}
+
+async function updateOrderStatusFromModal(newStatus) {
+  if (!currentModalOrder || !currentModalOrder.order_id) return;
+  await updateOrderStatus(currentModalOrder.order_id, newStatus);
 }
 
 // ----------------- ORDER DETAILS & EMBEDDED WHATSAPP MODAL -----------------
@@ -772,14 +814,32 @@ async function loadDashboardMetrics() {
     const fin = data.financials || {};
     const outcomes = data.outcomes || {};
 
-    document.getElementById("dash-saved").innerText = `+₹${Math.round(fin.avoided_rto_savings || 0).toLocaleString()}`;
-    document.getElementById("dash-saved-sub").innerText = `${outcomes.avoided_rtos || 0} serial returns halted`;
+    const deliveredEl = document.getElementById("dash-delivered-margin");
+    const deliveredSubEl = document.getElementById("dash-delivered-sub");
+    if (deliveredEl) {
+      deliveredEl.innerText = `+₹${Math.round(fin.delivered_margin || 0).toLocaleString()}`;
+    }
+    if (deliveredSubEl) {
+      deliveredSubEl.innerText = `${fin.delivered_orders || 0} delivered (₹${Math.round(fin.delivered_value || 0).toLocaleString()} GMV)`;
+    }
 
-    document.getElementById("dash-lost").innerText = `-₹${Math.round(fin.false_cancel_margin_loss || 0).toLocaleString()}`;
-    document.getElementById("dash-lost-sub").innerText = `${outcomes.false_cancellations || 0} genuine buyers cancelled`;
+    const savedEl = document.getElementById("dash-saved");
+    if (savedEl) {
+      savedEl.innerText = `+₹${Math.round(fin.avoided_rto_savings || 0).toLocaleString()}`;
+    }
+    const savedSubEl = document.getElementById("dash-saved-sub");
+    if (savedSubEl) {
+      savedSubEl.innerText = `${outcomes.avoided_rtos || 0} serial returns halted`;
+    }
 
-    document.getElementById("dash-nudge-gain").innerText = `+₹${Math.round(fin.prepaid_conversion_savings || 0).toLocaleString()}`;
-    document.getElementById("dash-nudge-sub").innerText = `${outcomes.prepaid_conversions || 0} orders converted to prepaid`;
+    const lostEl = document.getElementById("dash-lost");
+    if (lostEl) {
+      lostEl.innerText = `-₹${Math.round(fin.total_losses || 0).toLocaleString()}`;
+    }
+    const lostSubEl = document.getElementById("dash-lost-sub");
+    if (lostSubEl) {
+      lostSubEl.innerText = `${outcomes.incurred_rtos || 0} courier RTOs incurred`;
+    }
 
     const net = Math.round(fin.net_financial_impact || 0);
     const netEl = document.getElementById("dash-net-impact");

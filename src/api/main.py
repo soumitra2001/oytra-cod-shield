@@ -71,6 +71,10 @@ class WhatsAppReply(BaseModel):
     reply: str
 
 
+class StatusUpdateInput(BaseModel):
+    status: str
+
+
 class WhatsAppSimulateRequest(BaseModel):
     customer_name: str
     order_id: str
@@ -562,6 +566,28 @@ def process_whatsapp_reply(reply_data: WhatsAppReply):
     return {"order_id": reply_data.order_id, **result}
 
 
+@app.patch("/api/orders/{order_id}/status")
+def update_order_status(order_id: str, data: StatusUpdateInput):
+    """Manually update an order's status (e.g. DELIVERED, RTO, APPROVED_FOR_SHIPPING, etc.)."""
+    status_upper = data.status.strip().upper()
+
+    with db_engine.begin() as conn:
+        result = conn.execute(
+            text("UPDATE orders SET final_status = :status WHERE order_id = :oid"),
+            {"status": status_upper, "oid": order_id}
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        # Also update actual_status in order_decisions
+        conn.execute(
+            text("UPDATE order_decisions SET actual_status = :status WHERE order_id = :oid"),
+            {"status": status_upper, "oid": order_id}
+        )
+
+    return {"order_id": order_id, "status": status_upper, "message": f"Status updated to {status_upper}"}
+
+
 @app.get("/api/dashboard/metrics")
 def get_dashboard_metrics(
     preset: str = "today",
@@ -642,6 +668,13 @@ def get_dashboard_metrics(
     counts = {"ship": 0, "confirm": 0, "nudge_prepaid": 0, "cancel": 0}
     values = {"ship": 0.0, "confirm": 0.0, "nudge_prepaid": 0.0, "cancel": 0.0}
 
+    delivered_orders = 0
+    delivered_value = 0.0
+    delivered_margin = 0.0
+
+    incurred_rtos = 0
+    incurred_rto_cost = 0.0
+
     avoided_rtos = 0
     false_cancels = 0
     false_cancel_margin_loss = 0.0
@@ -665,6 +698,15 @@ def get_dashboard_metrics(
         if dec in counts:
             counts[dec] += 1
             values[dec] += val
+
+        # Status outcomes: DELIVERED vs RTO vs Pending
+        if status == "DELIVERED":
+            delivered_orders += 1
+            delivered_value += val
+            delivered_margin += val * GROSS_MARGIN_RATE
+        elif status == "RTO":
+            incurred_rtos += 1
+            incurred_rto_cost += RTO_COST_PER_ORDER
 
         # RTO Avoidance & False Cancels logic
         if dec == "cancel":
@@ -693,7 +735,8 @@ def get_dashboard_metrics(
     # Financial Impact Calculations
     saved_from_avoided_rto = avoided_rtos * RTO_COST_PER_ORDER
     prepaid_conversion_savings = prepaid_conversions * 40.65
-    net_impact = saved_from_avoided_rto + prepaid_conversion_savings - false_cancel_margin_loss
+    total_losses = false_cancel_margin_loss + incurred_rto_cost
+    net_impact = (delivered_margin + saved_from_avoided_rto + prepaid_conversion_savings) - total_losses
 
     pcts = {
         k: round(100.0 * counts[k] / max(total_orders, 1), 1)
@@ -713,12 +756,19 @@ def get_dashboard_metrics(
         "decisions_pct": pcts,
         "decisions_value": {k: round(v, 2) for k, v in values.items()},
         "financials": {
+            "delivered_orders": delivered_orders,
+            "delivered_value": round(delivered_value, 2),
+            "delivered_margin": round(delivered_margin, 2),
             "avoided_rto_savings": round(saved_from_avoided_rto, 2),
+            "incurred_rto_cost": round(incurred_rto_cost, 2),
             "false_cancel_margin_loss": round(false_cancel_margin_loss, 2),
+            "total_losses": round(total_losses, 2),
             "prepaid_conversion_savings": round(prepaid_conversion_savings, 2),
             "net_financial_impact": round(net_impact, 2),
         },
         "outcomes": {
+            "delivered_orders": delivered_orders,
+            "incurred_rtos": incurred_rtos,
             "avoided_rtos": avoided_rtos,
             "false_cancellations": false_cancels,
             "prepaid_conversions": prepaid_conversions,

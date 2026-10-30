@@ -276,24 +276,24 @@
       <!-- Financial Calculations Bar -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-emerald-100 bg-emerald-50/30">
-          <div class="text-xs font-bold uppercase text-emerald-700">₹ Saved from Avoided RTOs</div>
-          <div class="text-2xl font-black text-emerald-900 mt-1" id="dash-saved">₹0</div>
-          <div class="text-xs text-slate-500 mt-1" id="dash-saved-sub">Avoided returns halted</div>
+          <div class="text-xs font-bold uppercase text-emerald-700">Delivered Margin Realized</div>
+          <div class="text-2xl font-black text-emerald-900 mt-1" id="dash-delivered-margin">₹0</div>
+          <div class="text-xs text-slate-500 mt-1" id="dash-delivered-sub">0 delivered (₹0 GMV)</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-slate-200">
-          <div class="text-xs font-bold uppercase text-slate-400">₹ Lost from False Cancels</div>
+          <div class="text-xs font-bold uppercase text-slate-500">₹ Saved from Avoided RTOs</div>
+          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-saved">₹0</div>
+          <div class="text-xs text-slate-500 mt-1" id="dash-saved-sub">0 serial returns halted</div>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200">
+          <div class="text-xs font-bold uppercase text-slate-500">RTO / False Cancel Losses</div>
           <div class="text-2xl font-black text-slate-900 mt-1" id="dash-lost">₹0</div>
-          <div class="text-xs text-slate-500 mt-1" id="dash-lost-sub">Genuine buyers cancelled</div>
-        </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-200">
-          <div class="text-xs font-bold uppercase text-slate-400">Prepaid Nudge Net Gain</div>
-          <div class="text-2xl font-black text-slate-900 mt-1" id="dash-nudge-gain">₹0</div>
-          <div class="text-xs text-slate-500 mt-1" id="dash-nudge-sub">Prepaid conversion savings</div>
+          <div class="text-xs text-slate-500 mt-1" id="dash-lost-sub">0 courier RTOs incurred</div>
         </div>
         <div class="bg-emerald-600 text-white p-5 rounded-2xl shadow-md">
           <div class="text-xs font-bold uppercase text-emerald-200">⭐ Net Financial Contribution</div>
           <div class="text-2xl font-black mt-1" id="dash-net-impact">₹0</div>
-          <div class="text-xs text-emerald-100 mt-1" id="dash-net-sub">Live impact for selected window</div>
+          <div class="text-xs text-emerald-100 mt-1" id="dash-net-sub">Delivered margin + savings - losses</div>
         </div>
       </div>
 
@@ -557,6 +557,26 @@
             </div>
 
           </div>
+        </div>
+
+        <!-- Manual Delivery Outcome Override Bar -->
+        <div class="mt-4 pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Change Status:</span>
+            <button onclick="updateOrderStatusFromModal('DELIVERED')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+              <span>Mark Delivered</span>
+            </button>
+            <button onclick="updateOrderStatusFromModal('RTO')" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+              <span>Mark as RTO</span>
+            </button>
+            <button onclick="updateOrderStatusFromModal('CONFIRMED')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+              <span>Mark Confirmed</span>
+            </button>
+          </div>
+          <span class="text-[11px] text-slate-400">Updates live in database & immediately reflects in Founder Dashboard.</span>
         </div>
 
       </div>
