@@ -65,11 +65,18 @@ function switchTab(tabName) {
 async function handleEvaluate(e) {
   e.preventDefault();
 
+  const phoneVal = document.getElementById("inp-phone").value.trim().replace(/[^0-9]/g, '');
+  if (phoneVal.length !== 10) {
+    alert("⚠️ Please enter a valid 10-digit Indian phone number.");
+    document.getElementById("inp-phone").focus();
+    return;
+  }
+
   const payload = {
     order_id: document.getElementById("inp-order-id").value.trim(),
     order_value: parseFloat(document.getElementById("inp-order-value").value) || 0,
     customer_name: document.getElementById("inp-customer-name").value.trim(),
-    phone: document.getElementById("inp-phone").value.trim(),
+    phone: phoneVal,
     address: document.getElementById("inp-address").value.trim(),
     city: document.getElementById("inp-city").value.trim(),
     state: document.getElementById("inp-state").value.trim(),

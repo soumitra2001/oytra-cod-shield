@@ -63,12 +63,22 @@ def calculate_risk_score(order: dict, pincode_stats: dict, rules: dict) -> dict:
     # --- Factor 3: Address Quality (Rule-based) ---
     address_str = str(order.get("address", "")).strip().lower()
     address_score = 0.0
-    if len(address_str) < 15 or address_str in ["xyz", "call me", "test", "delhi", "near station"]:
-        address_score = 30.0  # 61.7% historical RTO rate on short addresses
+    words = [w for w in address_str.replace(",", " ").replace(".", " ").replace("-", " ").split() if w]
+
+    # Check for placeholder or clearly incomplete addresses (e.g. "xyz", "call me", "SNN Raj, 560076")
+    placeholder_matches = ["xyz", "call me", "test", "delhi", "near station", "bangalore", "mumbai", "sample"]
+    is_placeholder = any(address_str == p or address_str.startswith(p + ",") for p in placeholder_matches)
+
+    if len(address_str) < 18 or is_placeholder:
+        address_score = 25.0  # Very short or placeholder address
         factors["short_or_incomplete_address"] = True
-    elif len(address_str.split()) <= 2:
-        address_score = 15.0
+    elif len(words) <= 3 or len(address_str) < 25:
+        address_score = 20.0  # Lacks detailed street / house coordinates
+        factors["short_or_incomplete_address"] = True
+    elif len(words) <= 4 and not any(c.isdigit() for c in address_str):
+        address_score = 15.0  # Missing building/house number
         factors["sparse_address"] = True
+
     factors["address_risk_score"] = round(address_score, 2)
     total_score += address_score
 

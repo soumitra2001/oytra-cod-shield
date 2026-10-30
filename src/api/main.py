@@ -1,10 +1,11 @@
 """FastAPI backend — decision engine API endpoints."""
 
 import os
+import re
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -53,6 +54,16 @@ class OrderInput(BaseModel):
     customer_prior_rto: int | None = None
     utm_source: str = "new_order_ui"
     payment_method: str = "COD"
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        clean = re.sub(r"[^0-9]", "", str(v))
+        if len(clean) == 12 and clean.startswith("91"):
+            clean = clean[2:]
+        if len(clean) != 10:
+            raise ValueError("Customer phone number must be exactly 10 digits")
+        return clean
 
 
 class WhatsAppReply(BaseModel):
