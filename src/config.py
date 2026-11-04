@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 load_dotenv()
 
 # Database: defaults to pre-configured Supabase PostgreSQL if not in env or on any DB connection error
-DEFAULT_DB_URL = "postgresql://postgres:Supriya2001G@db.rmtorpqwtepigoxdosgh.supabase.co:5432/postgres"
+DEFAULT_DB_URL = "testdb"
 
 def get_db_engine():
     env_db = os.getenv("DATABASE_URL")
